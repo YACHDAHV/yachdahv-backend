@@ -1,0 +1,79 @@
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
+import { Preference, Profile, User } from "../database/entities";
+import { CreateOnboardingDto } from "./dto/create-onboarding.dto";
+
+@Injectable()
+export class OnboardingService {
+  constructor(
+    @InjectRepository(User) private readonly users: Repository<User>,
+    @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
+    @InjectRepository(Preference) private readonly preferences: Repository<Preference>,
+  ) {}
+
+  async completeForUser(userId: string, payload: CreateOnboardingDto) {
+    const user = await this.users.findOneBy({ id: userId });
+    if (!user) throw new NotFoundException("User was not found");
+    return this.persist(user, payload);
+  }
+
+  async createCompatibilityProfile(payload: CreateOnboardingDto) {
+    if (!payload.phone) throw new BadRequestException("Phone is required until the frontend uses authenticated onboarding");
+    let user = await this.users.findOneBy({ phone: payload.phone });
+    if (!user) {
+      user = await this.users.save(this.users.create({
+        name: payload.name?.trim() || "Yachdahv member",
+        phone: payload.phone,
+        email: null,
+        passwordHash: null,
+      }));
+    }
+    return this.persist(user, payload);
+  }
+
+  async findForUser(userId: string) {
+    const user = await this.users.findOne({
+      where: { id: userId },
+      relations: { profile: true, preference: true },
+    });
+    if (!user) throw new NotFoundException("User was not found");
+    return user;
+  }
+
+  private async persist(user: User, payload: CreateOnboardingDto) {
+    return this.users.manager.transaction(async (manager) => {
+      if (payload.name) user.name = payload.name.trim();
+      if (payload.phone) user.phone = payload.phone;
+      user.onboardingCompleted = true;
+      await manager.save(User, user);
+
+      const profile = await manager.findOne(Profile, { where: { userId: user.id } }) ?? manager.create(Profile, { userId: user.id, interests: [], photos: [] });
+      Object.assign(profile, {
+        age: payload.age ?? profile.age,
+        gender: payload.gender ?? profile.gender,
+        occupation: payload.occupation ?? profile.occupation,
+        country: payload.country ?? profile.country,
+        city: payload.city ?? profile.city,
+        bio: payload.bio ?? profile.bio,
+        church: payload.church ?? profile.church,
+        inviteCode: payload.inviteCode ?? profile.inviteCode,
+        intention: payload.intent ?? profile.intention,
+        interests: payload.interests?.slice(0, 5) ?? profile.interests,
+        education: payload.education ?? profile.education,
+      });
+      await manager.save(Profile, profile);
+
+      const preference = await manager.findOne(Preference, { where: { userId: user.id } }) ?? manager.create(Preference, { userId: user.id });
+      Object.assign(preference, {
+        minAge: payload.minAge ?? preference.minAge,
+        maxAge: payload.maxAge ?? preference.maxAge,
+        location: payload.city ?? preference.location,
+        maxDistanceKm: payload.maxDistanceKm ?? preference.maxDistanceKm,
+        education: payload.education ?? preference.education,
+      });
+      await manager.save(Preference, preference);
+      return manager.findOneOrFail(User, { where: { id: user.id }, relations: { profile: true, preference: true } });
+    });
+  }
+}
