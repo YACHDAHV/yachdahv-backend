@@ -22,6 +22,7 @@ async function seed() {
       passwordHash,
       role: person.role,
       phoneVerified: true,
+      emailVerified: true,
       onboardingCompleted: true,
       identityStatus: VerificationStatus.VERIFIED,
     });

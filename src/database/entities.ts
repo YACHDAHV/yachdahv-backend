@@ -72,6 +72,9 @@ export class User {
   @Column({ name: "phone_verified", default: false })
   phoneVerified!: boolean;
 
+  @Column({ name: "email_verified", default: false })
+  emailVerified!: boolean;
+
   @Column({ name: "onboarding_completed", default: false })
   onboardingCompleted!: boolean;
 
@@ -205,6 +208,31 @@ export class PhoneCode {
 
   @Column({ name: "code_hash", type: "varchar", length: 120, select: false })
   codeHash!: string;
+
+  @Column({ name: "expires_at" })
+  expiresAt!: Date;
+
+  @Column({ name: "used_at", type: "timestamptz", nullable: true })
+  usedAt!: Date | null;
+
+  @CreateDateColumn({ name: "created_at" })
+  createdAt!: Date;
+}
+
+@Entity("email_codes")
+export class EmailCode {
+  @PrimaryGeneratedColumn("uuid")
+  id!: string;
+
+  @Index()
+  @Column({ type: "varchar", length: 160 })
+  email!: string;
+
+  @Column({ name: "code_hash", type: "varchar", length: 120, select: false })
+  codeHash!: string;
+
+  @Column({ type: "smallint", default: 0 })
+  attempts!: number;
 
   @Column({ name: "expires_at" })
   expiresAt!: Date;
@@ -493,6 +521,7 @@ export const databaseEntities = [
   Profile,
   Preference,
   PhoneCode,
+  EmailCode,
   RefreshToken,
   Match,
   Conversation,

@@ -1,6 +1,7 @@
 import { BadRequestException, ServiceUnavailableException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { MatchesService } from "./matches/matches.service";
+import { EmailService } from "./email/email.service";
 import { StorageService } from "./storage/storage.service";
 import { UsersService } from "./users/users.service";
 
@@ -23,6 +24,17 @@ describe("backend domain rules", () => {
       purpose: "identity-document",
       contentType: "image/jpeg",
       fileName: "document.jpg",
+    })).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+
+  it("refuses transactional email until Resend is configured", async () => {
+    const config = { get: jest.fn().mockReturnValue(undefined) } as unknown as ConfigService;
+    const service = new EmailService(config);
+    await expect(service.sendVerificationCode({
+      email: "member@example.com",
+      name: "Member",
+      code: "123456",
+      codeId: "test-code",
     })).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 });

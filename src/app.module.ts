@@ -18,6 +18,7 @@ import { VerificationModule } from "./verification/verification.module";
 
 function validateEnvironment(config: Record<string, unknown>) {
   const required = ["DATABASE_URL", "JWT_ACCESS_SECRET", "JWT_REFRESH_SECRET", "JWT_RESET_SECRET"];
+  if (config.NODE_ENV === "production") required.push("RESEND_API_KEY", "RESEND_FROM_EMAIL", "FRONTEND_ORIGIN");
   const missing = required.filter((key) => typeof config[key] !== "string" || String(config[key]).length < 12);
   if (missing.length) throw new Error(`Missing or insecure environment variables: ${missing.join(", ")}`);
   return config;

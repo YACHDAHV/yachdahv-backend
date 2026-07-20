@@ -1,17 +1,21 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { AuditLog, Match, Report, ReportStatus, User, UserStatus, VerificationStatus, VerificationSubmission } from "../database/entities";
+import { EmailService } from "../email/email.service";
 import { AdminListQueryDto, ReviewReportDto, ReviewVerificationDto, UpdateUserStatusDto } from "./dto/admin.dto";
 
 @Injectable()
 export class AdminService {
+  private readonly logger = new Logger(AdminService.name);
+
   constructor(
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(Match) private readonly matches: Repository<Match>,
     @InjectRepository(Report) private readonly reports: Repository<Report>,
     @InjectRepository(VerificationSubmission) private readonly verifications: Repository<VerificationSubmission>,
     @InjectRepository(AuditLog) private readonly auditLogs: Repository<AuditLog>,
+    private readonly email: EmailService,
   ) {}
 
   async dashboard() {
@@ -77,6 +81,22 @@ export class AdminService {
     await this.verifications.save(submission);
     await this.users.update(submission.userId, { identityStatus: payload.status });
     await this.audit(actorId, "verification.reviewed", "verification", id, { status: payload.status });
+    if (payload.status === VerificationStatus.VERIFIED || payload.status === VerificationStatus.REJECTED) {
+      const user = await this.users.findOneBy({ id: submission.userId });
+      if (user?.email) {
+        try {
+          await this.email.sendIdentityDecision({
+            email: user.email,
+            name: user.name,
+            status: payload.status,
+            note: submission.reviewNote,
+            submissionId: submission.id,
+          });
+        } catch (error) {
+          this.logger.error(`Verification email failed for user ${user.id}`, error instanceof Error ? error.stack : undefined);
+        }
+      }
+    }
     return submission;
   }
 

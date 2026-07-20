@@ -44,6 +44,17 @@ export class VerifyPhoneDto extends RequestPhoneCodeDto {
   code!: string;
 }
 
+export class RequestEmailCodeDto {
+  @IsEmail()
+  email!: string;
+}
+
+export class VerifyEmailDto extends RequestEmailCodeDto {
+  @IsString()
+  @Length(6, 6)
+  code!: string;
+}
+
 export class ForgotPasswordDto {
   @IsEmail()
   email!: string;
