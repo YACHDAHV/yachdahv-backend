@@ -109,7 +109,7 @@ export class AuthService {
     return {
       success: true,
       expiresInSeconds: 600,
-      ...(this.config.get("NODE_ENV") === "production" ? {} : { developmentCode: code }),
+      ...(this.exposeDevelopmentSecrets() ? { developmentCode: code } : {}),
     };
   }
 
@@ -160,7 +160,7 @@ export class AuthService {
     return {
       success: true,
       expiresInSeconds: 600,
-      ...(this.config.get("NODE_ENV") === "production" ? {} : { developmentCode: code }),
+      ...(this.exposeDevelopmentSecrets() ? { developmentCode: code } : {}),
     };
   }
 
@@ -206,7 +206,7 @@ export class AuthService {
       } catch (error) {
         this.logger.error(`Password reset email failed for user ${user.id}`, error instanceof Error ? error.stack : undefined);
       }
-      return { success: true, ...(this.config.get("NODE_ENV") === "production" ? {} : { developmentToken: resetToken }) };
+      return { success: true, ...(this.exposeDevelopmentSecrets() ? { developmentToken: resetToken } : {}) };
     }
     return { success: true };
   }
@@ -245,6 +245,11 @@ export class AuthService {
     tokenRecord.tokenHash = await hash(refreshToken, 10);
     await this.refreshTokens.save(tokenRecord);
     return { accessToken, refreshToken, user: this.publicUser(user) };
+  }
+
+  private exposeDevelopmentSecrets() {
+    return this.config.get("NODE_ENV") === "development"
+      && this.config.get("EXPOSE_DEVELOPMENT_CODES") === "true";
   }
 
   private publicUser(user: User) {
