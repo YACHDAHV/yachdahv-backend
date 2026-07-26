@@ -1,4 +1,7 @@
-import { IsEmail, IsOptional, IsString, Length, MaxLength, MinLength } from "class-validator";
+import { IsEmail, IsOptional, IsString, Length, Matches, MaxLength, MinLength } from "class-validator";
+
+const STRONG_PASSWORD = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z\d]).+$/;
+const STRONG_PASSWORD_MESSAGE = "Password must include a letter, number, and special character";
 
 export class RegisterDto {
   @IsString()
@@ -16,6 +19,7 @@ export class RegisterDto {
   @IsString()
   @MinLength(8)
   @MaxLength(72)
+  @Matches(STRONG_PASSWORD, { message: STRONG_PASSWORD_MESSAGE })
   password!: string;
 }
 
@@ -67,5 +71,6 @@ export class ResetPasswordDto {
   @IsString()
   @MinLength(8)
   @MaxLength(72)
+  @Matches(STRONG_PASSWORD, { message: STRONG_PASSWORD_MESSAGE })
   password!: string;
 }

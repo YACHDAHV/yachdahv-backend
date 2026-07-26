@@ -1,7 +1,11 @@
-import { BadRequestException, ServiceUnavailableException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, ServiceUnavailableException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { validate } from "class-validator";
+import { RegisterDto, ResetPasswordDto } from "./auth/dto/auth.dto";
+import { VerificationStatus } from "./database/entities";
 import { MatchesService } from "./matches/matches.service";
 import { EmailService } from "./email/email.service";
+import { OnboardingService } from "./onboarding/onboarding.service";
 import { StorageService } from "./storage/storage.service";
 import { UsersService } from "./users/users.service";
 
@@ -11,10 +15,39 @@ describe("backend domain rules", () => {
     await expect(service.like("same-user", "same-user")).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it("does not expose Discover suggestions to unverified members", async () => {
+    const users = {
+      findOne: jest.fn().mockResolvedValue({
+        id: "member",
+        identityStatus: VerificationStatus.NOT_STARTED,
+      }),
+    };
+    const service = new MatchesService(users as never, {} as never, {} as never);
+    await expect(service.suggestions("member")).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it.each([
+    ["registration", RegisterDto, { name: "Member", email: "member@example.com", password: "alphabetonly" }],
+    ["password reset", ResetPasswordDto, { token: "reset-token", password: "alphabetonly" }],
+  ])("requires a number and special character during %s", async (_label, Dto, values) => {
+    const errors = await validate(Object.assign(new Dto(), values));
+    expect(errors.some((error) => error.property === "password")).toBe(true);
+  });
+
   it("enforces the five-interest onboarding rule", async () => {
     const service = new UsersService({} as never, {} as never, {} as never);
     await expect(service.updateProfile("user", { interests: ["1", "2", "3", "4", "5", "6"] }))
       .rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("requires the compulsory onboarding details before completion", async () => {
+    const users = { findOneBy: jest.fn().mockResolvedValue({ id: "member" }) };
+    const service = new OnboardingService(users as never, {} as never, {} as never);
+    await expect(service.completeForUser("member", {
+      age: 25,
+      bio: "Faith and family matter to me.",
+      church: "Harvesters International Christian Center",
+    })).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it("refuses upload signing until private storage credentials exist", async () => {

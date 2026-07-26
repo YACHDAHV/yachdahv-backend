@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Brackets, Repository } from "typeorm";
 import { Block, Conversation, Match, MatchStatus, Notification, User, UserStatus, VerificationStatus } from "../database/entities";
@@ -14,7 +14,7 @@ export class MatchesService {
   async suggestions(userId: string, limit = 20) {
     const me = await this.users.findOne({ where: { id: userId }, relations: { profile: true, preference: true } });
     if (!me) throw new NotFoundException("User was not found");
-    if (me.identityStatus !== VerificationStatus.VERIFIED) return [];
+    this.requireVerified(me);
 
     const blockedRows = await this.blocks.createQueryBuilder("block")
       .where("block.blockerId = :userId OR block.blockedId = :userId", { userId })
@@ -52,7 +52,13 @@ export class MatchesService {
 
   async like(userId: string, targetId: string) {
     if (userId === targetId) throw new BadRequestException("You cannot match with yourself");
-    if (!await this.users.exists({ where: { id: targetId, status: UserStatus.ACTIVE } })) throw new NotFoundException("Member was not found");
+    const [member, targetExists] = await Promise.all([
+      this.users.findOneBy({ id: userId }),
+      this.users.exists({ where: { id: targetId, status: UserStatus.ACTIVE } }),
+    ]);
+    if (!member) throw new NotFoundException("User was not found");
+    this.requireVerified(member);
+    if (!targetExists) throw new NotFoundException("Member was not found");
     if (await this.blocks.exists({ where: [{ blockerId: userId, blockedId: targetId }, { blockerId: targetId, blockedId: userId }] })) {
       throw new BadRequestException("This member is unavailable");
     }
@@ -76,10 +82,20 @@ export class MatchesService {
   }
 
   async pass(userId: string, targetId: string) {
+    if (userId === targetId) throw new BadRequestException("You cannot pass on yourself");
+    const member = await this.users.findOneBy({ id: userId });
+    if (!member) throw new NotFoundException("User was not found");
+    this.requireVerified(member);
     const [userAId, userBId] = [userId, targetId].sort();
     let match = await this.matches.findOneBy({ userAId, userBId });
     match ??= this.matches.create({ userAId, userBId });
     match.status = MatchStatus.PASSED;
     return this.matches.save(match);
+  }
+
+  private requireVerified(user: User) {
+    if (user.identityStatus !== VerificationStatus.VERIFIED) {
+      throw new ForbiddenException("Complete identity verification to access Discover");
+    }
   }
 }

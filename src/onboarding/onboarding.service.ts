@@ -42,6 +42,14 @@ export class OnboardingService {
   }
 
   private async persist(user: User, payload: CreateOnboardingDto) {
+    const bio = payload.bio?.trim();
+    const church = payload.church?.trim();
+    const inviteCode = payload.inviteCode?.trim();
+    if (!payload.age) throw new BadRequestException("Age is required");
+    if (!bio) throw new BadRequestException("Short bio is required");
+    if (!church) throw new BadRequestException("Church name is required");
+    if (!inviteCode) throw new BadRequestException("Invitation code is required");
+
     return this.users.manager.transaction(async (manager) => {
       if (payload.name) user.name = payload.name.trim();
       if (payload.phone) user.phone = payload.phone;
@@ -55,9 +63,9 @@ export class OnboardingService {
         occupation: payload.occupation ?? profile.occupation,
         country: payload.country ?? profile.country,
         city: payload.city ?? profile.city,
-        bio: payload.bio ?? profile.bio,
-        church: payload.church ?? profile.church,
-        inviteCode: payload.inviteCode ?? profile.inviteCode,
+        bio,
+        church,
+        inviteCode,
         intention: payload.intent ?? profile.intention,
         interests: payload.interests?.slice(0, 5) ?? profile.interests,
         education: payload.education ?? profile.education,
