@@ -1,4 +1,4 @@
-# Yachdahv backend.
+# Yachdahv backend
 
 NestJS REST API for the Yachdahv frontend, backed by PostgreSQL and designed for deployment on Railway. Profile photos and private identity documents are uploaded directly to Cloudflare R2 through short-lived signed URLs.
 
