@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException, ServiceUnavailableException } 
 import { ConfigService } from "@nestjs/config";
 import { validate } from "class-validator";
 import { RegisterDto, ResetPasswordDto } from "./auth/dto/auth.dto";
-import { VerificationStatus } from "./database/entities";
+import { MatchStatus, VerificationStatus } from "./database/entities";
 import { MatchesService } from "./matches/matches.service";
 import { EmailService } from "./email/email.service";
 import { OnboardingService } from "./onboarding/onboarding.service";
@@ -24,6 +24,22 @@ describe("backend domain rules", () => {
     };
     const service = new MatchesService(users as never, {} as never, {} as never);
     await expect(service.suggestions("member")).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it("keeps an inbound like discoverable so the second member can match back", () => {
+    const service = new MatchesService({} as never, {} as never, {} as never);
+    const inboundLike = {
+      userAId: "first-member",
+      userBId: "second-member",
+      likedByA: true,
+      likedByB: false,
+      status: MatchStatus.SUGGESTED,
+    };
+
+    expect((service as unknown as { shouldExcludeExistingMatch(match: typeof inboundLike, userId: string): boolean })
+      .shouldExcludeExistingMatch(inboundLike, "second-member")).toBe(false);
+    expect((service as unknown as { shouldExcludeExistingMatch(match: typeof inboundLike, userId: string): boolean })
+      .shouldExcludeExistingMatch(inboundLike, "first-member")).toBe(true);
   });
 
   it.each([

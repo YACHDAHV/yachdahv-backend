@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Brackets, Repository } from "typeorm";
-import { Block, Conversation, Match, MatchStatus, Notification, User, UserStatus, VerificationStatus } from "../database/entities";
+import { Block, Conversation, Match, MatchStatus, Notification, User, UserRole, UserStatus, VerificationStatus } from "../database/entities";
 
 @Injectable()
 export class MatchesService {
@@ -24,11 +24,16 @@ export class MatchesService {
     const existing = await this.matches.createQueryBuilder("match")
       .where("match.userAId = :userId OR match.userBId = :userId", { userId })
       .getMany();
-    existing.forEach((row) => excluded.add(row.userAId === userId ? row.userBId : row.userAId));
+    existing.forEach((row) => {
+      if (this.shouldExcludeExistingMatch(row, userId)) {
+        excluded.add(row.userAId === userId ? row.userBId : row.userAId);
+      }
+    });
 
     const query = this.users.createQueryBuilder("user")
       .leftJoinAndSelect("user.profile", "profile")
       .where("user.status = :status", { status: UserStatus.ACTIVE })
+      .andWhere("user.role = :role", { role: UserRole.MEMBER })
       .andWhere("user.identityStatus = :verification", { verification: VerificationStatus.VERIFIED })
       .andWhere("user.id NOT IN (:...excluded)", { excluded: [...excluded] })
       .take(Math.min(Math.max(limit, 1), 50));
@@ -54,7 +59,7 @@ export class MatchesService {
     if (userId === targetId) throw new BadRequestException("You cannot match with yourself");
     const [member, targetExists] = await Promise.all([
       this.users.findOneBy({ id: userId }),
-      this.users.exists({ where: { id: targetId, status: UserStatus.ACTIVE } }),
+      this.users.exists({ where: { id: targetId, role: UserRole.MEMBER, status: UserStatus.ACTIVE, identityStatus: VerificationStatus.VERIFIED } }),
     ]);
     if (!member) throw new NotFoundException("User was not found");
     this.requireVerified(member);
@@ -97,5 +102,10 @@ export class MatchesService {
     if (user.identityStatus !== VerificationStatus.VERIFIED) {
       throw new ForbiddenException("Complete identity verification to access Discover");
     }
+  }
+
+  private shouldExcludeExistingMatch(match: Match, userId: string) {
+    if (match.status !== MatchStatus.SUGGESTED) return true;
+    return match.userAId === userId ? match.likedByA : match.likedByB;
   }
 }
