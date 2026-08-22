@@ -12,6 +12,8 @@ import { databaseEntities } from "./entities";
         type: "postgres" as const,
         url: config.getOrThrow<string>("DATABASE_URL"),
         entities: databaseEntities,
+        migrations: [__dirname + "/migrations/*{.js,.ts}"],
+        migrationsRun: config.get("NODE_ENV") === "production",
         synchronize: config.get("DB_SYNCHRONIZE") === "true" && config.get("NODE_ENV") !== "production",
         ssl: config.get("DATABASE_SSL") === "true" ? { rejectUnauthorized: false } : false,
         logging: config.get("DB_LOGGING") === "true",
