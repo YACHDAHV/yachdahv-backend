@@ -12,6 +12,8 @@ const people = [
 
 async function seed() {
   await dataSource.initialize();
+  const applied = await dataSource.runMigrations({ transaction: "each" });
+  if (applied.length) console.log(`Applied ${applied.length} pending migration(s): ${applied.map((migration) => migration.name).join(", ")}`);
   const passwordHash = await hash(process.env.SEED_PASSWORD ?? "ChangeMe123!", 12);
   for (const person of people) {
     let user = await dataSource.getRepository(User).findOneBy({ email: person.email });
