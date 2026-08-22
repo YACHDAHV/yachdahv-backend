@@ -11,7 +11,7 @@ import { UsersService } from "./users/users.service";
 
 describe("backend domain rules", () => {
   it("does not allow a member to match with themselves", async () => {
-    const service = new MatchesService({} as never, {} as never, {} as never);
+    const service = new MatchesService({} as never, {} as never, {} as never, {} as never);
     await expect(service.like("same-user", "same-user")).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -22,12 +22,48 @@ describe("backend domain rules", () => {
         identityStatus: VerificationStatus.NOT_STARTED,
       }),
     };
-    const service = new MatchesService(users as never, {} as never, {} as never);
+    const config = { get: jest.fn().mockReturnValue("true") };
+    const service = new MatchesService(users as never, {} as never, {} as never, {} as never, config as never);
     await expect(service.suggestions("member")).rejects.toBeInstanceOf(ForbiddenException);
   });
 
+  it("allows Discover access while identity verification is explicitly disabled", () => {
+    const config = { get: jest.fn().mockReturnValue("false") };
+    const service = new MatchesService({} as never, {} as never, {} as never, {} as never, config as never);
+    expect(() => (service as unknown as { requireVerified(user: { identityStatus: VerificationStatus }): void })
+      .requireVerified({ identityStatus: VerificationStatus.NOT_STARTED })).not.toThrow();
+  });
+
+  it("returns dashboard progress without exposing matches before verification", async () => {
+    const users = {
+      findOne: jest.fn().mockResolvedValue({
+        id: "member",
+        name: "Member",
+        identityStatus: VerificationStatus.NOT_STARTED,
+        profile: { age: 28, city: "Lagos", interests: ["Faith"] },
+        preference: { minAge: 25, maxAge: 34 },
+      }),
+    };
+    const queryBuilder = {
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getCount: jest.fn().mockResolvedValue(2),
+    };
+    const matches = { createQueryBuilder: jest.fn().mockReturnValue(queryBuilder) };
+    const notifications = { count: jest.fn().mockResolvedValue(3) };
+    const config = { get: jest.fn().mockReturnValue("true") };
+    const service = new MatchesService(users as never, matches as never, {} as never, notifications as never, config as never);
+
+    await expect(service.dashboard("member")).resolves.toMatchObject({
+      verified: false,
+      weekly: { limit: 5, used: 2, remaining: 3 },
+      unreadNotifications: 3,
+      suggestions: [],
+    });
+  });
+
   it("keeps an inbound like discoverable so the second member can match back", () => {
-    const service = new MatchesService({} as never, {} as never, {} as never);
+    const service = new MatchesService({} as never, {} as never, {} as never, {} as never);
     const inboundLike = {
       userAId: "first-member",
       userBId: "second-member",

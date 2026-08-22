@@ -6,7 +6,7 @@ NestJS REST API for the Yachdahv frontend, backed by PostgreSQL and designed for
 
 - JWT authentication with rotating, persisted refresh tokens
 - Resend email OTP, welcome, password-reset and identity-review emails
-- Legacy phone verification endpoints (an SMS provider is still required for production phone OTP)
+- Email verification and account recovery delivered through Resend
 - Onboarding, profiles and match preferences
 - Identity-verification submission and admin review
 - Match suggestions, likes, mutual matches and passes
@@ -54,7 +54,6 @@ The default seeded password is `ChangeMe123!`; set `SEED_PASSWORD` before seedin
 | --- | --- |
 | Authentication | `POST /api/auth/register`, `/login`, `/refresh`, `/logout`, `/forgot-password`, `/reset-password` |
 | Email | `POST /api/auth/email/request-code`, `/email/verify` |
-| Phone | `POST /api/auth/phone/request-code`, `/phone/verify` (development until an SMS provider is configured) |
 | Onboarding | `GET /api/onboarding/me`, `PUT /api/onboarding/me` |
 | Current user | `GET /api/users/me`, `PATCH /api/users/me/profile`, `PATCH /api/users/me/preferences`, `DELETE /api/users/me` |
 | Matches | `GET /api/matches/suggestions`, `GET /api/matches`, `POST /api/matches/:memberId/like`, `/pass` |

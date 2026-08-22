@@ -3,12 +3,16 @@ import { CurrentUser } from "../auth/auth.decorators";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { CreateConversationDto, SendMessageDto } from "./dto/message.dto";
+import { MessagesGateway } from "./messages.gateway";
 import { MessagesService } from "./messages.service";
 
 @UseGuards(JwtAuthGuard)
 @Controller("conversations")
 export class MessagesController {
-  constructor(private readonly messages: MessagesService) {}
+  constructor(
+    private readonly messages: MessagesService,
+    private readonly gateway: MessagesGateway,
+  ) {}
 
   @Get()
   list(@CurrentUser() user: AuthenticatedUser) { return this.messages.listConversations(user.sub); }
@@ -24,8 +28,10 @@ export class MessagesController {
   }
 
   @Post(":id/messages")
-  send(@CurrentUser() user: AuthenticatedUser, @Param("id", ParseUUIDPipe) id: string, @Body() payload: SendMessageDto) {
-    return this.messages.send(user.sub, id, payload.body);
+  async send(@CurrentUser() user: AuthenticatedUser, @Param("id", ParseUUIDPipe) id: string, @Body() payload: SendMessageDto) {
+    const message = await this.messages.send(user.sub, id, payload.body);
+    await this.gateway.publishMessage(message);
+    return message;
   }
 
   @Post(":id/read")

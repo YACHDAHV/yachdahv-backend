@@ -3,12 +3,14 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { User, VerificationStatus, VerificationSubmission } from "../database/entities";
 import { SubmitVerificationDto } from "./dto/verification.dto";
+import { AdminEmailAlertsService } from "../email/admin-email-alerts.service";
 
 @Injectable()
 export class VerificationService {
   constructor(
     @InjectRepository(VerificationSubmission) private readonly submissions: Repository<VerificationSubmission>,
     @InjectRepository(User) private readonly users: Repository<User>,
+    private readonly adminAlerts: AdminEmailAlertsService,
   ) {}
 
   async status(userId: string) {
@@ -26,6 +28,13 @@ export class VerificationService {
       status: VerificationStatus.SUBMITTED,
     }));
     await this.users.update(userId, { identityStatus: VerificationStatus.SUBMITTED });
+    await this.adminAlerts.notify("verification", {
+      subject: "A verification submission needs review",
+      heading: "Verification queue update",
+      content: "A member submitted identity documents for administrator review.",
+      targetUrl: "/admin/verification",
+      eventId: `verification/${submission.id}`,
+    });
     return submission;
   }
 }

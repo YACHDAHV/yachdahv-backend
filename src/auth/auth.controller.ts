@@ -1,6 +1,6 @@
 import { Body, Controller, Post } from "@nestjs/common";
 import { AuthService } from "./auth.service";
-import { ForgotPasswordDto, LoginDto, RefreshDto, RegisterDto, RequestEmailCodeDto, RequestPhoneCodeDto, ResetPasswordDto, VerifyEmailDto, VerifyPhoneDto } from "./dto/auth.dto";
+import { ForgotPasswordDto, LoginDto, RefreshDto, RegisterDto, RequestEmailCodeDto, ResetPasswordDto, VerifyEmailDto } from "./dto/auth.dto";
 
 @Controller("auth")
 export class AuthController {
@@ -17,12 +17,6 @@ export class AuthController {
 
   @Post("logout")
   logout(@Body() payload: RefreshDto) { return this.auth.logout(payload); }
-
-  @Post("phone/request-code")
-  requestPhoneCode(@Body() payload: RequestPhoneCodeDto) { return this.auth.requestPhoneCode(payload.phone); }
-
-  @Post("phone/verify")
-  verifyPhone(@Body() payload: VerifyPhoneDto) { return this.auth.verifyPhone(payload); }
 
   @Post("email/request-code")
   requestEmailCode(@Body() payload: RequestEmailCodeDto) { return this.auth.requestEmailCode(payload.email); }

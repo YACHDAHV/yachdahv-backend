@@ -34,6 +34,31 @@ assert.equal(me.email, "fikayo@yachdahv.test");
 
 const dashboard = await request("/admin/dashboard", { headers: auth(admin.accessToken) });
 assert.ok(dashboard.users >= 4);
+const [administrators, rolePermissions, systemControls] = await Promise.all([
+  request("/admin/administrators", { headers: auth(admin.accessToken) }),
+  request("/admin/role-permissions", { headers: auth(admin.accessToken) }),
+  request("/admin/system-controls", { headers: auth(admin.accessToken) }),
+]);
+assert.ok(administrators.some((item) => item.email === "admin@yachdahv.test"));
+assert.ok(rolePermissions["Super Admin"].includes("manage_admins"));
+assert.equal(typeof systemControls.matching, "boolean");
+
+const [churches, adminChurches, waitlistInvites] = await Promise.all([
+  request("/onboarding/churches", { headers: auth(fikayo.accessToken) }),
+  request("/admin/churches", { headers: auth(admin.accessToken) }),
+  request("/admin/waitlist-invites", { headers: auth(admin.accessToken) }),
+]);
+assert.ok(churches.length >= 1);
+assert.ok(adminChurches.length >= churches.length);
+assert.ok(Array.isArray(waitlistInvites));
+assert.ok(waitlistInvites.every((invite) => !("code" in invite) && !("codeHash" in invite)));
+
+const legacyOnboarding = await fetch(`${base}/onboarding`, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ phone: "+2348000000000" }),
+});
+assert.equal(legacyOnboarding.status, 404);
 
 await request(`/matches/${david.user.id}/like`, { method: "POST", headers: auth(fikayo.accessToken) });
 const mutual = await request(`/matches/${fikayo.user.id}/like`, { method: "POST", headers: auth(david.accessToken) });
@@ -55,4 +80,14 @@ assert.ok(messages.some((message) => message.body === "Hello from the backend sm
 const notifications = await request("/notifications", { headers: auth(david.accessToken) });
 assert.ok(notifications.length >= 1);
 
-console.log("Smoke test passed: health, auth, profile, admin, mutual match, conversation, message and notifications.");
+const relationshipState = await request("/relationship-tools/state", { headers: auth(fikayo.accessToken) });
+const shared = await request("/relationship-tools/devotional/reflections", {
+  method: "POST",
+  headers: auth(fikayo.accessToken),
+  body: JSON.stringify({ day: 0, body: "A shared reflection from the backend smoke test" }),
+});
+assert.equal(shared.matchId, relationshipState.matchId);
+const partnerState = await request("/relationship-tools/state", { headers: auth(david.accessToken) });
+assert.ok(partnerState.reflections.some((reflection) => reflection.body === "A shared reflection from the backend smoke test"));
+
+console.log("Smoke test passed: auth, waitlist access controls, admin controls, matching, messaging, notifications and shared relationship tools.");

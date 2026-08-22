@@ -264,6 +264,9 @@ export class AuthService {
       emailVerified: user.emailVerified,
       onboardingCompleted: user.onboardingCompleted,
       identityStatus: user.identityStatus,
+      adminRole: user.adminRole,
+      permissions: user.permissions,
+      verificationRequired: this.config.get<string>("IDENTITY_VERIFICATION_REQUIRED") === "true",
     };
   }
 }

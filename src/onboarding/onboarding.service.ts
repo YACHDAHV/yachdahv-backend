@@ -1,7 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { Preference, Profile, User } from "../database/entities";
+import { AdminEmailAlertsService } from "../email/admin-email-alerts.service";
+import { InvitationsService } from "../invitations/invitations.service";
 import { CreateOnboardingDto } from "./dto/create-onboarding.dto";
 
 @Injectable()
@@ -10,26 +12,23 @@ export class OnboardingService {
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
     @InjectRepository(Preference) private readonly preferences: Repository<Preference>,
+    @Optional() private readonly adminAlerts?: AdminEmailAlertsService,
+    @Optional() private readonly invitations?: InvitationsService,
   ) {}
 
   async completeForUser(userId: string, payload: CreateOnboardingDto) {
     const user = await this.users.findOneBy({ id: userId });
     if (!user) throw new NotFoundException("User was not found");
-    return this.persist(user, payload);
-  }
-
-  async createCompatibilityProfile(payload: CreateOnboardingDto) {
-    if (!payload.phone) throw new BadRequestException("Phone is required until the frontend uses authenticated onboarding");
-    let user = await this.users.findOneBy({ phone: payload.phone });
-    if (!user) {
-      user = await this.users.save(this.users.create({
-        name: payload.name?.trim() || "Yachdahv member",
-        phone: payload.phone,
-        email: null,
-        passwordHash: null,
-      }));
-    }
-    return this.persist(user, payload);
+    const wasCompleted = user.onboardingCompleted;
+    const completed = await this.persist(user, payload);
+    if (!wasCompleted) await this.adminAlerts?.notify("newUsers", {
+      subject: "A new member completed Yachdahv onboarding",
+      heading: "New member onboarding",
+      content: `${completed.name} completed their profile and joined the matching community.`,
+      targetUrl: `/admin/users/${completed.id}`,
+      eventId: `onboarding/${completed.id}`,
+    });
+    return completed;
   }
 
   async findForUser(userId: string) {
@@ -43,14 +42,16 @@ export class OnboardingService {
 
   private async persist(user: User, payload: CreateOnboardingDto) {
     const bio = payload.bio?.trim();
-    const church = payload.church?.trim();
     const inviteCode = payload.inviteCode?.trim();
     if (!payload.age) throw new BadRequestException("Age is required");
     if (!bio) throw new BadRequestException("Short bio is required");
-    if (!church) throw new BadRequestException("Church name is required");
+    if (!payload.churchId) throw new BadRequestException("Church selection is required");
     if (!inviteCode) throw new BadRequestException("Invitation code is required");
+    if (!this.invitations) throw new BadRequestException("Invitation validation is unavailable");
 
     return this.users.manager.transaction(async (manager) => {
+      const invitation = await this.invitations!.consumeForUser(user, payload.churchId!, inviteCode, manager);
+      const church = invitation.church!;
       if (payload.name) user.name = payload.name.trim();
       if (payload.phone) user.phone = payload.phone;
       user.onboardingCompleted = true;
@@ -64,8 +65,9 @@ export class OnboardingService {
         country: payload.country ?? profile.country,
         city: payload.city ?? profile.city,
         bio,
-        church,
-        inviteCode,
+        church: church.name,
+        churchId: church.id,
+        inviteCode: null,
         intention: payload.intent ?? profile.intention,
         interests: payload.interests?.slice(0, 5) ?? profile.interests,
         education: payload.education ?? profile.education,

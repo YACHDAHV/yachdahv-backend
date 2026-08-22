@@ -44,6 +44,12 @@ export enum ReportStatus {
   DISMISSED = "dismissed",
 }
 
+export enum WaitlistInviteStatus {
+  PENDING = "pending",
+  REDEEMED = "redeemed",
+  REVOKED = "revoked",
+}
+
 @Entity("users")
 export class User {
   @PrimaryGeneratedColumn("uuid")
@@ -80,6 +86,15 @@ export class User {
 
   @Column({ name: "identity_status", type: "enum", enum: VerificationStatus, default: VerificationStatus.NOT_STARTED })
   identityStatus!: VerificationStatus;
+
+  @Column({ name: "admin_role", type: "varchar", length: 40, nullable: true })
+  adminRole!: string | null;
+
+  @Column({ type: "text", array: true, default: "{}" })
+  permissions!: string[];
+
+  @Column({ name: "admin_preferences", type: "jsonb", default: () => "'{}'::jsonb" })
+  adminPreferences!: Record<string, boolean>;
 
   @CreateDateColumn({ name: "created_at" })
   createdAt!: Date;
@@ -131,6 +146,13 @@ export class Profile {
   @Column({ type: "varchar", length: 100, nullable: true })
   church!: string | null;
 
+  @Column({ name: "church_id", type: "uuid", nullable: true })
+  churchId!: string | null;
+
+  @ManyToOne(() => Church, { onDelete: "SET NULL" })
+  @JoinColumn({ name: "church_id" })
+  churchRecord?: Relation<Church>;
+
   @Column({ name: "invite_code", type: "varchar", length: 40, nullable: true })
   inviteCode!: string | null;
 
@@ -157,6 +179,81 @@ export class Profile {
 
   @Column({ type: "jsonb", default: () => "'[]'::jsonb" })
   photos!: Array<{ key: string; url?: string; primary?: boolean }>;
+
+  @CreateDateColumn({ name: "created_at" })
+  createdAt!: Date;
+
+  @UpdateDateColumn({ name: "updated_at" })
+  updatedAt!: Date;
+}
+
+@Entity("churches")
+export class Church {
+  @PrimaryGeneratedColumn("uuid")
+  id!: string;
+
+  @Index({ unique: true })
+  @Column({ type: "varchar", length: 120 })
+  name!: string;
+
+  @Column({ default: true })
+  active!: boolean;
+
+  @CreateDateColumn({ name: "created_at" })
+  createdAt!: Date;
+
+  @UpdateDateColumn({ name: "updated_at" })
+  updatedAt!: Date;
+}
+
+@Entity("waitlist_invites")
+export class WaitlistInvite {
+  @PrimaryGeneratedColumn("uuid")
+  id!: string;
+
+  @Index()
+  @Column({ type: "varchar", length: 160 })
+  email!: string;
+
+  @Column({ name: "church_id", type: "uuid", nullable: true })
+  churchId!: string | null;
+
+  @ManyToOne(() => Church, { onDelete: "SET NULL" })
+  @JoinColumn({ name: "church_id" })
+  church?: Relation<Church>;
+
+  @Index({ unique: true })
+  @Column({ name: "code_hash", type: "varchar", length: 64, select: false })
+  codeHash!: string;
+
+  @Column({ name: "code_hint", type: "varchar", length: 20 })
+  codeHint!: string;
+
+  @Column({ type: "enum", enum: WaitlistInviteStatus, default: WaitlistInviteStatus.PENDING })
+  status!: WaitlistInviteStatus;
+
+  @Column({ name: "expires_at", type: "timestamptz" })
+  expiresAt!: Date;
+
+  @Column({ name: "sent_at", type: "timestamptz", nullable: true })
+  sentAt!: Date | null;
+
+  @Column({ name: "redeemed_by_id", type: "uuid", nullable: true })
+  redeemedById!: string | null;
+
+  @ManyToOne(() => User, { onDelete: "SET NULL" })
+  @JoinColumn({ name: "redeemed_by_id" })
+  redeemedBy?: Relation<User>;
+
+  @Column({ name: "redeemed_at", type: "timestamptz", nullable: true })
+  redeemedAt!: Date | null;
+
+  @Column({ name: "created_by_id", type: "uuid", nullable: true })
+  createdById!: string | null;
+
+  @ManyToOne(() => User, { onDelete: "SET NULL" })
+  @JoinColumn({ name: "created_by_id" })
+  createdBy?: Relation<User>;
 
   @CreateDateColumn({ name: "created_at" })
   createdAt!: Date;
@@ -516,9 +613,52 @@ export class AuditLog {
   createdAt!: Date;
 }
 
+@Entity("platform_settings")
+export class PlatformSetting {
+  @Column({ type: "varchar", length: 80, primary: true })
+  key!: string;
+
+  @Column({ type: "jsonb", default: () => "'{}'::jsonb" })
+  value!: Record<string, unknown>;
+
+  @UpdateDateColumn({ name: "updated_at" })
+  updatedAt!: Date;
+}
+
+@Entity("relationship_tool_states")
+export class RelationshipToolState {
+  @PrimaryGeneratedColumn("uuid")
+  id!: string;
+
+  @Index({ unique: true })
+  @Column({ name: "match_id", type: "uuid" })
+  matchId!: string;
+
+  @ManyToOne(() => Match, { onDelete: "CASCADE" })
+  @JoinColumn({ name: "match_id" })
+  match!: Relation<Match>;
+
+  @Column({ name: "devotional_day", type: "smallint", default: 0 })
+  devotionalDay!: number;
+
+  @Column({ type: "jsonb", default: () => "'[]'::jsonb" })
+  reflections!: Array<{ day: number; userId: string; body: string; updatedAt: string }>;
+
+  @Column({ name: "discussed_topics", type: "text", array: true, default: "{}" })
+  discussedTopics!: string[];
+
+  @CreateDateColumn({ name: "created_at" })
+  createdAt!: Date;
+
+  @UpdateDateColumn({ name: "updated_at" })
+  updatedAt!: Date;
+}
+
 export const databaseEntities = [
   User,
   Profile,
+  Church,
+  WaitlistInvite,
   Preference,
   PhoneCode,
   EmailCode,
@@ -531,4 +671,6 @@ export const databaseEntities = [
   Report,
   VerificationSubmission,
   AuditLog,
+  PlatformSetting,
+  RelationshipToolState,
 ];

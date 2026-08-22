@@ -1,4 +1,4 @@
-import { IsArray, IsInt, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
+import { IsArray, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from "class-validator";
 
 export class CreateOnboardingDto {
   @IsOptional()
@@ -46,6 +46,10 @@ export class CreateOnboardingDto {
   @IsString()
   @MaxLength(80)
   church?: string;
+
+  @IsOptional()
+  @IsUUID()
+  churchId?: string;
 
   @IsOptional()
   @IsString()

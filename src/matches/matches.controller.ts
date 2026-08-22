@@ -9,6 +9,11 @@ import { MatchesService } from "./matches.service";
 export class MatchesController {
   constructor(private readonly matches: MatchesService) {}
 
+  @Get("dashboard")
+  dashboard(@CurrentUser() user: AuthenticatedUser) {
+    return this.matches.dashboard(user.sub);
+  }
+
   @Get("suggestions")
   suggestions(@CurrentUser() user: AuthenticatedUser, @Query("limit", new DefaultValuePipe(20), ParseIntPipe) limit: number) {
     return this.matches.suggestions(user.sub, limit);

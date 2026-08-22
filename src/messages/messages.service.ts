@@ -59,12 +59,23 @@ export class MessagesService {
 
   async markRead(userId: string, conversationId: string) {
     await this.assertMember(userId, conversationId);
-    await this.messages.createQueryBuilder().update(Message).set({ readAt: new Date() })
+    const readAt = new Date();
+    await this.messages.createQueryBuilder().update(Message).set({ readAt })
       .where("conversation_id = :conversationId", { conversationId })
       .andWhere("sender_id != :userId", { userId })
       .andWhere("read_at IS NULL")
       .execute();
-    return { success: true };
+    return { success: true, readAt };
+  }
+
+  async participantIds(conversationId: string) {
+    const conversation = await this.conversations.findOneBy({ id: conversationId });
+    if (!conversation) throw new NotFoundException("Conversation was not found");
+    return [conversation.userAId, conversation.userBId];
+  }
+
+  async assertConversationMember(userId: string, conversationId: string) {
+    return this.assertMember(userId, conversationId);
   }
 
   private async assertMember(userId: string, conversationId: string) {

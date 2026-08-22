@@ -7,9 +7,13 @@ import { AppController } from "./app.controller";
 import { AuthModule } from "./auth/auth.module";
 import { DatabaseModule } from "./database/database.module";
 import { MatchesModule } from "./matches/matches.module";
+import { InvitationsModule } from "./invitations/invitations.module";
 import { MessagesModule } from "./messages/messages.module";
 import { NotificationsModule } from "./notifications/notifications.module";
 import { OnboardingModule } from "./onboarding/onboarding.module";
+import { MaintenanceGuard } from "./platform/maintenance.guard";
+import { PlatformModule } from "./platform/platform.module";
+import { RelationshipToolsModule } from "./relationship-tools/relationship-tools.module";
 import { SafetyModule } from "./safety/safety.module";
 import { StorageModule } from "./storage/storage.module";
 import { SupportModule } from "./support/support.module";
@@ -29,12 +33,15 @@ function validateEnvironment(config: Record<string, unknown>) {
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnvironment }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
     DatabaseModule,
+    PlatformModule,
     AuthModule,
+    InvitationsModule,
     OnboardingModule,
     UsersModule,
     MatchesModule,
     MessagesModule,
     NotificationsModule,
+    RelationshipToolsModule,
     SafetyModule,
     VerificationModule,
     StorageModule,
@@ -42,6 +49,9 @@ function validateEnvironment(config: Record<string, unknown>) {
     SupportModule,
   ],
   controllers: [AppController],
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+  providers: [
+    { provide: APP_GUARD, useClass: MaintenanceGuard },
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
 })
 export class AppModule {}
