@@ -12,4 +12,4 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
 EXPOSE 4000
-CMD ["sh", "-c", "npm run db:migrate && node dist/main.js"]
+CMD ["sh", "-c", "npm run db:migrate && npm run db:seed && node dist/main.js"]
