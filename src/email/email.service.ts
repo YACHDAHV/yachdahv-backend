@@ -136,6 +136,38 @@ export class EmailService {
     });
   }
 
+  async sendNewMatchEmail(input: { email: string; name: string; matchName: string; matchId: string }) {
+    const frontendOrigin = this.config.getOrThrow<string>("FRONTEND_ORIGIN").split(",")[0].replace(/\/$/, "");
+    return this.send({
+      to: input.email,
+      subject: "You have a new mutual match on Yachdahv",
+      eyebrow: "New match",
+      heading: "It's a match",
+      greeting: `Hi ${input.name},`,
+      content: `You and ${input.matchName} have mutually matched. Start a conversation and see where it leads.`,
+      actionLabel: "View your matches",
+      actionUrl: `${frontendOrigin}/matches`,
+      footer: "Faith first. Love with purpose.",
+      idempotencyKey: `match/${input.matchId}`,
+    });
+  }
+
+  async sendNewMessageEmail(input: { email: string; name: string; senderName: string; preview: string; messageId: string }) {
+    const frontendOrigin = this.config.getOrThrow<string>("FRONTEND_ORIGIN").split(",")[0].replace(/\/$/, "");
+    return this.send({
+      to: input.email,
+      subject: `${input.senderName} sent you a message on Yachdahv`,
+      eyebrow: "New message",
+      heading: "You have a new message",
+      greeting: `Hi ${input.name},`,
+      content: `${input.senderName}: "${input.preview}"`,
+      actionLabel: "Reply now",
+      actionUrl: `${frontendOrigin}/messages`,
+      footer: "Faith first. Love with purpose.",
+      idempotencyKey: `message/${input.messageId}`,
+    });
+  }
+
   private async send(input: {
     to: string;
     subject: string;

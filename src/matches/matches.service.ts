@@ -1,17 +1,21 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException, Optional } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, Optional } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Brackets, IsNull, Repository } from "typeorm";
 import { Block, Conversation, Match, MatchStatus, Notification, User, UserRole, UserStatus, VerificationStatus } from "../database/entities";
+import { EmailService } from "../email/email.service";
 import { PlatformService } from "../platform/platform.service";
 
 @Injectable()
 export class MatchesService {
+  private readonly logger = new Logger(MatchesService.name);
+
   constructor(
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(Match) private readonly matches: Repository<Match>,
     @InjectRepository(Block) private readonly blocks: Repository<Block>,
     @InjectRepository(Notification) private readonly notifications: Repository<Notification>,
+    private readonly email: EmailService,
     @Optional() private readonly config?: ConfigService,
     @Optional() private readonly platform?: PlatformService,
   ) {}
@@ -30,6 +34,7 @@ export class MatchesService {
       verified && controls.matching ? this.suggestions(userId, controls.weeklyLimit) : Promise.resolve([]),
       this.matches.createQueryBuilder("match")
         .where("(match.userAId = :userId OR match.userBId = :userId)", { userId })
+        .andWhere("match.status = :status", { status: MatchStatus.MATCHED })
         .andWhere("match.updatedAt >= :weekStartedAt", { weekStartedAt })
         .getCount(),
       this.notifications.count({ where: { userId, readAt: IsNull() } }),
@@ -115,13 +120,15 @@ export class MatchesService {
       throw new BadRequestException("This member is unavailable");
     }
     const [userAId, userBId] = [userId, targetId].sort();
-    return this.matches.manager.transaction(async (manager) => {
+    let becameMutual = false;
+    const result = await this.matches.manager.transaction(async (manager) => {
       let match = await manager.findOne(Match, { where: { userAId, userBId } });
       match ??= manager.create(Match, { userAId, userBId, likedByA: false, likedByB: false });
       if (userId === userAId) match.likedByA = true;
       else match.likedByB = true;
       if (match.likedByA && match.likedByB) {
         match.status = MatchStatus.MATCHED;
+        becameMutual = true;
         const existingConversation = await manager.findOne(Conversation, { where: { userAId, userBId } });
         if (!existingConversation) await manager.save(Conversation, manager.create(Conversation, { userAId, userBId }));
         await manager.save(Notification, [
@@ -131,6 +138,12 @@ export class MatchesService {
       }
       return manager.save(Match, match);
     });
+    if (becameMutual) {
+      const userA = userAId === member.id ? member : targetExists;
+      const userB = userBId === member.id ? member : targetExists;
+      void this.notifyNewMatch(userA, userB, result.id);
+    }
+    return result;
   }
 
   async pass(userId: string, targetId: string) {
@@ -141,9 +154,21 @@ export class MatchesService {
     if (!(await this.controls()).matching) throw new ForbiddenException("Matching is temporarily paused");
     const [userAId, userBId] = [userId, targetId].sort();
     let match = await this.matches.findOneBy({ userAId, userBId });
-    match ??= this.matches.create({ userAId, userBId });
-    match.status = MatchStatus.PASSED;
+    match ??= this.matches.create({ userAId, userBId, passedByA: false, passedByB: false });
+    if (userId === userAId) match.passedByA = true;
+    else match.passedByB = true;
+    if (match.passedByA && match.passedByB) match.status = MatchStatus.PASSED;
     return this.matches.save(match);
+  }
+
+  private async notifyNewMatch(userA: User, userB: User, matchId: string) {
+    const results = await Promise.allSettled([
+      userA.email ? this.email.sendNewMatchEmail({ email: userA.email, name: userA.name, matchName: userB.name, matchId }) : Promise.resolve(),
+      userB.email ? this.email.sendNewMatchEmail({ email: userB.email, name: userB.name, matchName: userA.name, matchId }) : Promise.resolve(),
+    ]);
+    results.forEach((result) => {
+      if (result.status === "rejected") this.logger.error(`New match email failed for match ${matchId}`, result.reason instanceof Error ? result.reason.stack : undefined);
+    });
   }
 
   private requireVerified(user: User) {
@@ -161,8 +186,10 @@ export class MatchesService {
   }
 
   private shouldExcludeExistingMatch(match: Match, userId: string) {
-    if (match.status !== MatchStatus.SUGGESTED) return true;
-    return match.userAId === userId ? match.likedByA : match.likedByB;
+    if (match.status === MatchStatus.MATCHED || match.status === MatchStatus.PASSED) return true;
+    return match.userAId === userId
+      ? Boolean(match.likedByA || match.passedByA)
+      : Boolean(match.likedByB || match.passedByB);
   }
 
   private profileCompletion(user: User) {

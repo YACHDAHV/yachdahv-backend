@@ -25,7 +25,7 @@ export class SafetyService {
     let block = await this.blocks.findOneBy({ blockerId: userId, blockedId: memberId });
     block ??= await this.blocks.save(this.blocks.create({ blockerId: userId, blockedId: memberId }));
     const [userAId, userBId] = [userId, memberId].sort();
-    await this.matches.update({ userAId, userBId }, { status: MatchStatus.PASSED });
+    await this.matches.update({ userAId, userBId }, { status: MatchStatus.PASSED, passedByA: true, passedByB: true });
     return block;
   }
 

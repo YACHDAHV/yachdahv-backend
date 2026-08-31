@@ -78,7 +78,7 @@ export class OnboardingService {
       Object.assign(preference, {
         minAge: payload.minAge ?? preference.minAge,
         maxAge: payload.maxAge ?? preference.maxAge,
-        location: payload.city ?? preference.location,
+        location: preference.location,
         maxDistanceKm: payload.maxDistanceKm ?? preference.maxDistanceKm,
         education: payload.education ?? preference.education,
       });

@@ -396,6 +396,12 @@ export class Match {
   @Column({ name: "liked_by_b", default: false })
   likedByB!: boolean;
 
+  @Column({ name: "passed_by_a", default: false })
+  passedByA!: boolean;
+
+  @Column({ name: "passed_by_b", default: false })
+  passedByB!: boolean;
+
   @CreateDateColumn({ name: "created_at" })
   createdAt!: Date;
 

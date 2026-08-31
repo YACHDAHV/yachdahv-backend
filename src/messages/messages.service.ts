@@ -1,16 +1,21 @@
-import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Brackets, Repository } from "typeorm";
-import { Block, Conversation, Match, MatchStatus, Message, Notification } from "../database/entities";
+import { Block, Conversation, Match, MatchStatus, Message, Notification, User } from "../database/entities";
+import { EmailService } from "../email/email.service";
 
 @Injectable()
 export class MessagesService {
+  private readonly logger = new Logger(MessagesService.name);
+
   constructor(
     @InjectRepository(Conversation) private readonly conversations: Repository<Conversation>,
     @InjectRepository(Message) private readonly messages: Repository<Message>,
     @InjectRepository(Match) private readonly matches: Repository<Match>,
     @InjectRepository(Block) private readonly blocks: Repository<Block>,
     @InjectRepository(Notification) private readonly notifications: Repository<Notification>,
+    @InjectRepository(User) private readonly users: Repository<User>,
+    private readonly email: EmailService,
   ) {}
 
   async listConversations(userId: string) {
@@ -54,7 +59,27 @@ export class MessagesService {
       body: body.trim().slice(0, 120),
       data: { conversationId, senderId: userId },
     }));
+    void this.notifyNewMessage(userId, recipientId, message.id, body.trim());
     return message;
+  }
+
+  private async notifyNewMessage(senderId: string, recipientId: string, messageId: string, body: string) {
+    try {
+      const [sender, recipient] = await Promise.all([
+        this.users.findOneBy({ id: senderId }),
+        this.users.findOneBy({ id: recipientId }),
+      ]);
+      if (!recipient?.email) return;
+      await this.email.sendNewMessageEmail({
+        email: recipient.email,
+        name: recipient.name,
+        senderName: sender?.name ?? "Someone",
+        preview: body.slice(0, 120),
+        messageId,
+      });
+    } catch (error) {
+      this.logger.error(`New message email failed for message ${messageId}`, error instanceof Error ? error.stack : undefined);
+    }
   }
 
   async markRead(userId: string, conversationId: string) {
@@ -63,6 +88,12 @@ export class MessagesService {
     await this.messages.createQueryBuilder().update(Message).set({ readAt })
       .where("conversation_id = :conversationId", { conversationId })
       .andWhere("sender_id != :userId", { userId })
+      .andWhere("read_at IS NULL")
+      .execute();
+    await this.notifications.createQueryBuilder().update(Notification).set({ readAt })
+      .where("user_id = :userId", { userId })
+      .andWhere("type = 'message'")
+      .andWhere("data->>'conversationId' = :conversationId", { conversationId })
       .andWhere("read_at IS NULL")
       .execute();
     return { success: true, readAt };

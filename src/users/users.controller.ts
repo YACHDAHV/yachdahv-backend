@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Patch, Post, UseGuards } from "@nestjs/c
 import { CurrentUser } from "../auth/auth.decorators";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { ChangePasswordDto } from "./dto/change-password.dto";
 import { UpdatePreferencesDto, UpdateProfileDto } from "./dto/update-user.dto";
 import { UsersService } from "./users.service";
 
@@ -21,6 +22,11 @@ export class UsersController {
   @Patch("preferences")
   updatePreferences(@CurrentUser() user: AuthenticatedUser, @Body() payload: UpdatePreferencesDto) {
     return this.users.updatePreferences(user.sub, payload);
+  }
+
+  @Patch("password")
+  changePassword(@CurrentUser() user: AuthenticatedUser, @Body() payload: ChangePasswordDto) {
+    return this.users.changePassword(user.sub, payload);
   }
 
   @Delete()

@@ -1,7 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
+import { compare, hash } from "bcryptjs";
 import { Repository } from "typeorm";
 import { Preference, Profile, User, UserStatus } from "../database/entities";
+import { ChangePasswordDto } from "./dto/change-password.dto";
 import { UpdatePreferencesDto, UpdateProfileDto } from "./dto/update-user.dto";
 
 @Injectable()
@@ -39,6 +41,19 @@ export class UsersService {
     Object.assign(preference, payload);
     await this.preferences.save(preference);
     return preference;
+  }
+
+  async changePassword(userId: string, payload: ChangePasswordDto) {
+    const user = await this.users.createQueryBuilder("user")
+      .addSelect("user.passwordHash")
+      .where("user.id = :userId", { userId })
+      .getOne();
+    if (!user) throw new NotFoundException("User was not found");
+    if (!user.passwordHash || !(await compare(payload.currentPassword, user.passwordHash))) {
+      throw new UnauthorizedException("Current password is incorrect");
+    }
+    await this.users.update(userId, { passwordHash: await hash(payload.newPassword, 12) });
+    return { success: true };
   }
 
   async deactivate(userId: string) {
