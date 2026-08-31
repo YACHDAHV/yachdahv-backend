@@ -1,7 +1,7 @@
 import { ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Brackets, Repository } from "typeorm";
-import { Block, Conversation, Match, MatchStatus, Message, Notification, User } from "../database/entities";
+import { Block, Conversation, Match, MatchStatus, Message, User } from "../database/entities";
 import { EmailService } from "../email/email.service";
 
 @Injectable()
@@ -13,7 +13,6 @@ export class MessagesService {
     @InjectRepository(Message) private readonly messages: Repository<Message>,
     @InjectRepository(Match) private readonly matches: Repository<Match>,
     @InjectRepository(Block) private readonly blocks: Repository<Block>,
-    @InjectRepository(Notification) private readonly notifications: Repository<Notification>,
     @InjectRepository(User) private readonly users: Repository<User>,
     private readonly email: EmailService,
   ) {}
@@ -52,13 +51,6 @@ export class MessagesService {
     }
     const message = await this.messages.save(this.messages.create({ conversationId, senderId: userId, body: body.trim(), readAt: null }));
     await this.conversations.update(conversationId, { updatedAt: new Date() });
-    await this.notifications.save(this.notifications.create({
-      userId: recipientId,
-      type: "message",
-      title: "New message",
-      body: body.trim().slice(0, 120),
-      data: { conversationId, senderId: userId },
-    }));
     void this.notifyNewMessage(userId, recipientId, message.id, body.trim());
     return message;
   }
@@ -90,13 +82,17 @@ export class MessagesService {
       .andWhere("sender_id != :userId", { userId })
       .andWhere("read_at IS NULL")
       .execute();
-    await this.notifications.createQueryBuilder().update(Notification).set({ readAt })
-      .where("user_id = :userId", { userId })
-      .andWhere("type = 'message'")
-      .andWhere("data->>'conversationId' = :conversationId", { conversationId })
-      .andWhere("read_at IS NULL")
-      .execute();
     return { success: true, readAt };
+  }
+
+  async unreadMessageCount(userId: string) {
+    const count = await this.messages.createQueryBuilder("message")
+      .innerJoin("message.conversation", "conversation")
+      .where("(conversation.userAId = :userId OR conversation.userBId = :userId)", { userId })
+      .andWhere("message.senderId != :userId", { userId })
+      .andWhere("message.readAt IS NULL")
+      .getCount();
+    return { count };
   }
 
   async participantIds(conversationId: string) {

@@ -17,6 +17,9 @@ export class MessagesController {
   @Get()
   list(@CurrentUser() user: AuthenticatedUser) { return this.messages.listConversations(user.sub); }
 
+  @Get("unread-count")
+  unreadCount(@CurrentUser() user: AuthenticatedUser) { return this.messages.unreadMessageCount(user.sub); }
+
   @Post()
   create(@CurrentUser() user: AuthenticatedUser, @Body() payload: CreateConversationDto) {
     return this.messages.createConversation(user.sub, payload.memberId);
