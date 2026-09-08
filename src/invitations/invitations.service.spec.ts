@@ -1,5 +1,8 @@
 import { ConfigService } from "@nestjs/config";
+import { plainToInstance } from "class-transformer";
+import { validate } from "class-validator";
 import { Church, WaitlistInvite, WaitlistInviteStatus } from "../database/entities";
+import { normalizeInviteCode, ValidateWaitlistInviteDto } from "./dto/invitation.dto";
 import { InvitationsService } from "./invitations.service";
 
 describe("waitlist invitations", () => {
@@ -25,6 +28,21 @@ describe("waitlist invitations", () => {
     expect(internals.hashCode(code)).toHaveLength(64);
     expect(internals.hashCode(code)).not.toContain(code);
     expect(internals.hashCode(code)).toBe(internals.hashCode(code.toLowerCase().replaceAll("-", " ")));
+    expect(internals.hashCode(code)).toBe(internals.hashCode(code.split("").join(" ")));
+  });
+
+  it("extracts a pasted invitation code from spaced or wrapped email text", () => {
+    expect(normalizeInviteCode("Y D V - 2 3 4 5 - 6 7 8 9 - A B C D")).toBe("YDV-2345-6789-ABCD");
+    expect(normalizeInviteCode("Your code is YDV-2345-6789-ABCD, thanks")).toBe("YDV-2345-6789-ABCD");
+  });
+
+  it("accepts a letter-spaced paste after DTO transformation", async () => {
+    const payload = plainToInstance(ValidateWaitlistInviteDto, {
+      churchId: "632b3952-5664-4d93-b6fd-ddd87cfdb196",
+      code: "Y D V - 2 3 4 5 - 6 7 8 9 - A B C D extra",
+    });
+    expect(payload.code).toBe("YDV-2345-6789-ABCD");
+    expect(await validate(payload)).toHaveLength(0);
   });
 
   it("never exposes the code hash in an administrator response", () => {

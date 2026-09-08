@@ -4,7 +4,7 @@ import { CurrentUser, Roles } from "../auth/auth.decorators";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { UserRole } from "../database/entities";
-import { BatchWaitlistInviteDto, CreateChurchDto, CreateWaitlistInviteDto, UpdateChurchDto, ValidateWaitlistInviteDto } from "./dto/invitation.dto";
+import { BatchWaitlistInviteDto, CreateChurchDto, CreateWaitlistInviteDto, RequestWaitlistInviteDto, UpdateChurchDto, ValidateWaitlistInviteDto } from "./dto/invitation.dto";
 import { InvitationsService } from "./invitations.service";
 
 @UseGuards(JwtAuthGuard)
@@ -12,6 +12,8 @@ import { InvitationsService } from "./invitations.service";
 export class OnboardingInvitationsController {
   constructor(private readonly invitations: InvitationsService) {}
   @Get("churches") churches() { return this.invitations.listChurches(); }
+  @Throttle({ default: { limit: 3, ttl: 600_000 } })
+  @Post("invitation/request") request(@CurrentUser() user: AuthenticatedUser, @Body() payload: RequestWaitlistInviteDto = {}) { return this.invitations.requestForUser(user.sub, payload.churchId); }
   @Throttle({ default: { limit: 8, ttl: 60_000 } })
   @Post("invitation/validate") validate(@CurrentUser() user: AuthenticatedUser, @Body() payload: ValidateWaitlistInviteDto) { return this.invitations.validateForUser(user.sub, payload); }
 }

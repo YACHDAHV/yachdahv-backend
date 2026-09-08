@@ -5,7 +5,7 @@ import { createHmac, randomInt } from "node:crypto";
 import { EntityManager, Repository } from "typeorm";
 import { Church, User, UserRole, WaitlistInvite, WaitlistInviteStatus } from "../database/entities";
 import { EmailService } from "../email/email.service";
-import { BatchWaitlistInviteDto, CreateChurchDto, CreateWaitlistInviteDto, UpdateChurchDto, ValidateWaitlistInviteDto } from "./dto/invitation.dto";
+import { BatchWaitlistInviteDto, CreateChurchDto, CreateWaitlistInviteDto, normalizeInviteCode, UpdateChurchDto, ValidateWaitlistInviteDto } from "./dto/invitation.dto";
 
 const CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 
@@ -51,7 +51,8 @@ export class InvitationsService {
 
   async createInvite(actorId: string, payload: CreateWaitlistInviteDto) {
     await this.assertAdmin(actorId);
-    return this.issue(actorId, payload.email, payload.churchId, payload.expiresInDays);
+    const { invite } = await this.issue(actorId, payload.email, payload.churchId, payload.expiresInDays);
+    return invite;
   }
 
   async batchCreate(actorId: string, payload: BatchWaitlistInviteDto) {
@@ -64,7 +65,7 @@ export class InvitationsService {
     const results: Array<{ email: string; ok: boolean; invite?: ReturnType<InvitationsService["view"]>; error?: string }> = [];
     for (const entry of entries) {
       try {
-        const invite = await this.issue(actorId, entry.email, entry.churchId, payload.expiresInDays);
+        const { invite } = await this.issue(actorId, entry.email, entry.churchId, payload.expiresInDays);
         results.push({ email: entry.email, ok: true, invite });
       } catch (error) {
         results.push({ email: entry.email, ok: false, error: error instanceof Error ? error.message : "Invitation failed" });
@@ -78,7 +79,8 @@ export class InvitationsService {
     const invite = await this.invites.findOneBy({ id });
     if (!invite) throw new NotFoundException("Invitation was not found");
     if (invite.status === WaitlistInviteStatus.REDEEMED) throw new ConflictException("A redeemed invitation cannot be replaced");
-    return this.issue(actorId, invite.email, invite.churchId ?? undefined, Math.max(1, Math.ceil((invite.expiresAt.getTime() - Date.now()) / 86_400_000)));
+    const { invite: replacement } = await this.issue(actorId, invite.email, invite.churchId ?? undefined, Math.max(1, Math.ceil((invite.expiresAt.getTime() - Date.now()) / 86_400_000)));
+    return replacement;
   }
 
   async revoke(actorId: string, id: string) {
@@ -89,6 +91,26 @@ export class InvitationsService {
     invite.status = WaitlistInviteStatus.REVOKED;
     await this.invites.save(invite);
     return { success: true };
+  }
+
+  async requestForUser(userId: string, churchId?: string) {
+    const user = await this.users.findOneBy({ id: userId });
+    if (!user?.email || !user.emailVerified) throw new BadRequestException("Your account must have a verified email address");
+    if (user.onboardingCompleted) throw new ConflictException("Your profile is already set up");
+    const recent = await this.invites.findOne({
+      where: { email: user.email.trim().toLowerCase() },
+      order: { createdAt: "DESC" },
+    });
+    if (recent?.sentAt && Date.now() - recent.sentAt.getTime() < 60_000) {
+      throw new BadRequestException("Please wait a minute before requesting another invitation code");
+    }
+    const { invite, code } = await this.issue(userId, user.email, churchId, 14);
+    return {
+      sent: true,
+      email: maskEmail(user.email),
+      expiresAt: invite.expiresAt,
+      ...(this.exposeDevelopmentCodes() ? { developmentCode: code } : {}),
+    };
   }
 
   async validateForUser(userId: string, payload: ValidateWaitlistInviteDto) {
@@ -144,7 +166,7 @@ export class InvitationsService {
       .andWhere("id != :id", { id: invite.id })
       .execute();
     invite.church = church ?? undefined;
-    return this.view(invite);
+    return { invite: this.view(invite), code };
   }
 
   private async findValid(email: string, churchId: string, code: string, manager: EntityManager, lock = false) {
@@ -173,8 +195,12 @@ export class InvitationsService {
 
   private hashCode(code: string) {
     const secret = this.config.get<string>("INVITE_CODE_SECRET") || this.config.getOrThrow<string>("JWT_RESET_SECRET");
-    const normalized = code.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const normalized = String(normalizeInviteCode(code) ?? "").replace(/[^A-Z0-9]/g, "");
     return createHmac("sha256", secret).update(normalized).digest("hex");
+  }
+
+  private exposeDevelopmentCodes() {
+    return this.config.get("NODE_ENV") !== "production" && this.config.get("EXPOSE_DEVELOPMENT_CODES") === "true";
   }
 
   private async assertAdmin(actorId: string) {
@@ -199,4 +225,11 @@ export class InvitationsService {
       createdAt: invite.createdAt,
     };
   }
+}
+
+function maskEmail(email: string) {
+  const [local, domain] = email.split("@");
+  if (!local || !domain) return email;
+  const visible = local.slice(0, 1);
+  return `${visible}***@${domain}`;
 }
