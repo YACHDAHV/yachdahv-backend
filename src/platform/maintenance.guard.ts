@@ -9,7 +9,7 @@ export class MaintenanceGuard implements CanActivate {
     if (context.getType() !== "http") return true;
     const request = context.switchToHttp().getRequest<{ originalUrl?: string; url?: string }>();
     const path = request.originalUrl ?? request.url ?? "";
-    if (/\/api\/(health|auth(?:\/|$)|admin(?:\/|$)|support\/contact)/.test(path)) return true;
+    if (/\/api\/(health|auth(?:\/|$)|admin(?:\/|$)|support\/contact|verification\/webhooks)/.test(path)) return true;
     if ((await this.platform.controls()).maintenance) {
       throw new ServiceUnavailableException("Yachdahv is temporarily under maintenance");
     }

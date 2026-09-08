@@ -576,11 +576,36 @@ export class VerificationSubmission {
   @Column({ name: "document_type", type: "varchar", length: 40 })
   documentType!: string;
 
-  @Column({ name: "document_key", type: "varchar", length: 240 })
-  documentKey!: string;
+  @Column({ name: "document_key", type: "varchar", length: 240, nullable: true })
+  documentKey!: string | null;
+
+  @Column({ name: "document_country", type: "varchar", length: 4, nullable: true })
+  documentCountry!: string | null;
+
+  @Column({ name: "document_number_last4", type: "varchar", length: 8, nullable: true })
+  documentNumberLast4!: string | null;
+
+  @Index()
+  @Column({ name: "document_number_hash", type: "varchar", length: 64, nullable: true })
+  documentNumberHash!: string | null;
 
   @Column({ name: "selfie_key", type: "varchar", length: 240, nullable: true })
   selfieKey!: string | null;
+
+  @Column({ type: "varchar", length: 40, default: "manual" })
+  provider!: string;
+
+  @Column({ name: "provider_reference", type: "varchar", length: 120, nullable: true })
+  providerReference!: string | null;
+
+  @Column({ name: "provider_payload", type: "jsonb", default: () => "'{}'::jsonb" })
+  providerPayload!: Record<string, unknown>;
+
+  @Column({ name: "liveness_passed", type: "boolean", nullable: true })
+  livenessPassed!: boolean | null;
+
+  @Column({ name: "face_match_passed", type: "boolean", nullable: true })
+  faceMatchPassed!: boolean | null;
 
   @Column({ type: "enum", enum: VerificationStatus, default: VerificationStatus.SUBMITTED })
   status!: VerificationStatus;

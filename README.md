@@ -8,7 +8,7 @@ NestJS REST API for the Yachdahv frontend, backed by PostgreSQL and designed for
 - Resend email OTP, welcome, password-reset and identity-review emails
 - Email verification and account recovery delivered through Resend
 - Onboarding, profiles and match preferences
-- Identity-verification submission and admin review
+- Identity verification through Prembly (Nigerian NIN + liveness, or global government ID + liveness), with admin review as a fallback
 - Match suggestions, likes, mutual matches and passes
 - Conversations, messages and read state
 - Notifications
@@ -60,7 +60,7 @@ The default seeded password is `ChangeMe123!`; set `SEED_PASSWORD` before seedin
 | Messages | `GET/POST /api/conversations`, `GET/POST /api/conversations/:id/messages`, `POST /api/conversations/:id/read` |
 | Notifications | `GET /api/notifications`, `POST /api/notifications/read-all`, `POST /api/notifications/:id/read` |
 | Safety | `GET/POST/DELETE /api/safety/blocks`, `POST /api/safety/reports` |
-| Verification | `GET/POST /api/verification` |
+| Verification | `GET/POST /api/verification`, `POST /api/verification/webhooks/prembly` |
 | Uploads | `POST /api/uploads/presign` |
 | Admin | `/api/admin/dashboard`, `/users`, `/verifications`, `/reports` |
 
@@ -74,6 +74,20 @@ Create two buckets:
 - `R2_PRIVATE_BUCKET`: identity documents and selfies; never expose this bucket publicly.
 
 The client requests a signed upload URL from `POST /api/uploads/presign`, uploads directly to R2, and then stores the returned object key through the profile or verification endpoint. Enforce file-size limits in the client and at the Cloudflare layer, strip image metadata, and add malware/content scanning before marking documents as reviewed.
+
+## Prembly identity verification
+
+Add these Railway variables from your Prembly sandbox (or live) dashboard:
+
+- `PREMBLY_API_KEY`: secret API key (`x-api-key`)
+- `PREMBLY_APP_ID`: optional application id (`app-id`). NIN and liveness work with the API key alone; some document endpoints still send this header when present.
+- `PREMBLY_BASE_URL`: `https://api.prembly.com` unless Prembly gives you a sandbox host
+- `PREMBLY_PUBLIC_KEY`: optional, used to verify webhook signatures
+- `PREMBLY_LIVENESS_MIN_CONFIDENCE`: optional, default `0.7`
+
+Nigerian members submit an 11-digit NIN and a live selfie. The API runs Prembly face liveness, then NIN-with-face. Everyone else uploads a passport, driver's license, national ID or residence permit plus the same selfie; the API runs liveness and document-with-face. Successful checks mark the member verified immediately. If Prembly keys are missing, submissions stay in the admin review queue.
+
+Set `IDENTITY_VERIFICATION_REQUIRED=true` when you want Discover and matching to require a verified identity.
 
 ## Railway deployment
 

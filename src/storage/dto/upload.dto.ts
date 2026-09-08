@@ -6,7 +6,7 @@ export class CreateUploadDto {
   purpose!: "profile-photo" | "identity-document" | "identity-selfie";
 
   @IsString()
-  @IsIn(["image/jpeg", "image/png", "image/webp", "application/pdf"])
+  @IsIn(["image/jpeg", "image/png", "image/webp"])
   contentType!: string;
 
   @IsString()

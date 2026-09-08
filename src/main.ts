@@ -5,7 +5,7 @@ import { AppModule } from "./app.module";
 
 async function bootstrap() {
   console.log(`[boot] starting Yachdahv API pid=${process.pid} port=${process.env.PORT ?? 4000} env=${process.env.NODE_ENV ?? "development"}`);
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   app.setGlobalPrefix("api");
   app.use(helmet());
   app.enableCors({
