@@ -4,6 +4,7 @@ import { Repository } from "typeorm";
 import { Preference, Profile, User } from "../database/entities";
 import { AdminEmailAlertsService } from "../email/admin-email-alerts.service";
 import { InvitationsService } from "../invitations/invitations.service";
+import { normalizeGender } from "../users/gender";
 import { CreateOnboardingDto } from "./dto/create-onboarding.dto";
 
 @Injectable()
@@ -44,6 +45,8 @@ export class OnboardingService {
     const bio = payload.bio?.trim();
     const inviteCode = payload.inviteCode?.trim();
     if (!payload.age) throw new BadRequestException("Age is required");
+    const gender = normalizeGender(payload.gender);
+    if (!gender) throw new BadRequestException("Gender is required");
     if (!bio) throw new BadRequestException("Short bio is required");
     if (!payload.churchId) throw new BadRequestException("Church selection is required");
     if (!inviteCode) throw new BadRequestException("Invitation code is required");
@@ -60,7 +63,7 @@ export class OnboardingService {
       const profile = await manager.findOne(Profile, { where: { userId: user.id } }) ?? manager.create(Profile, { userId: user.id, interests: [], photos: [] });
       Object.assign(profile, {
         age: payload.age ?? profile.age,
-        gender: payload.gender ?? profile.gender,
+        gender,
         occupation: payload.occupation ?? profile.occupation,
         country: payload.country ?? profile.country,
         city: payload.city ?? profile.city,

@@ -5,6 +5,7 @@ import { Brackets, IsNull, Repository } from "typeorm";
 import { Block, Conversation, Match, MatchStatus, Notification, User, UserRole, UserStatus, VerificationStatus } from "../database/entities";
 import { EmailService } from "../email/email.service";
 import { PlatformService } from "../platform/platform.service";
+import { normalizeGender, oppositeGender } from "../users/gender";
 
 @Injectable()
 export class MatchesService {
@@ -88,6 +89,9 @@ export class MatchesService {
       .andWhere("user.id NOT IN (:...excluded)", { excluded: [...excluded] })
       .take(Math.min(Math.max(limit, 1), 50));
     if (this.verificationRequired()) query.andWhere("user.identityStatus = :verification", { verification: VerificationStatus.VERIFIED });
+    const seeking = oppositeGender(me.profile?.gender);
+    if (!seeking) return [];
+    query.andWhere("LOWER(profile.gender) = LOWER(:seeking)", { seeking });
     if (me.preference?.minAge) query.andWhere("profile.age >= :minAge", { minAge: me.preference.minAge });
     if (me.preference?.maxAge) query.andWhere("profile.age <= :maxAge", { maxAge: me.preference.maxAge });
     if (me.preference?.location) query.andWhere("LOWER(profile.city) = LOWER(:location)", { location: me.preference.location });
@@ -109,13 +113,14 @@ export class MatchesService {
   async like(userId: string, targetId: string) {
     if (userId === targetId) throw new BadRequestException("You cannot match with yourself");
     const [member, targetExists] = await Promise.all([
-      this.users.findOneBy({ id: userId }),
-      this.users.findOneBy({ id: targetId, role: UserRole.MEMBER, status: UserStatus.ACTIVE }),
+      this.users.findOne({ where: { id: userId }, relations: { profile: true } }),
+      this.users.findOne({ where: { id: targetId, role: UserRole.MEMBER, status: UserStatus.ACTIVE }, relations: { profile: true } }),
     ]);
     if (!member) throw new NotFoundException("User was not found");
     this.requireVerified(member);
     if (!(await this.controls()).matching) throw new ForbiddenException("Matching is temporarily paused");
     if (!targetExists || (this.verificationRequired() && targetExists.identityStatus !== VerificationStatus.VERIFIED)) throw new NotFoundException("Member was not found");
+    this.assertOppositeGender(member, targetExists);
     if (await this.blocks.exists({ where: [{ blockerId: userId, blockedId: targetId }, { blockerId: targetId, blockedId: userId }] })) {
       throw new BadRequestException("This member is unavailable");
     }
@@ -174,6 +179,13 @@ export class MatchesService {
   private requireVerified(user: User) {
     if (this.verificationRequired() && user.identityStatus !== VerificationStatus.VERIFIED) {
       throw new ForbiddenException("Complete identity verification to access Discover");
+    }
+  }
+
+  private assertOppositeGender(member: User, target: User) {
+    const seeking = oppositeGender(member.profile?.gender);
+    if (!seeking || normalizeGender(target.profile?.gender) !== seeking) {
+      throw new BadRequestException("You can only match with the opposite gender");
     }
   }
 

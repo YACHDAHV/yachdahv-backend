@@ -1,5 +1,6 @@
-import { IsArray, IsBoolean, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from "class-validator";
+import { IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from "class-validator";
 import { Type } from "class-transformer";
+import { PROFILE_GENDERS } from "../gender";
 
 class PhotoDto {
   @IsString()
@@ -19,7 +20,7 @@ class PhotoDto {
 export class UpdateProfileDto {
   @IsOptional() @IsString() @MaxLength(80) name?: string;
   @IsOptional() @IsInt() @Min(18) @Max(100) age?: number;
-  @IsOptional() @IsString() @MaxLength(20) gender?: string;
+  @IsOptional() @IsIn(PROFILE_GENDERS) gender?: string;
   @IsOptional() @IsString() @MaxLength(80) occupation?: string;
   @IsOptional() @IsString() @MaxLength(60) country?: string;
   @IsOptional() @IsString() @MaxLength(80) city?: string;

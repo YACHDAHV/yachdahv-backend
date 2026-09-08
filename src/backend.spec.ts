@@ -15,6 +15,23 @@ describe("backend domain rules", () => {
     await expect(service.like("same-user", "same-user")).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it("does not let members like someone of the same gender", async () => {
+    const users = {
+      findOne: jest.fn()
+        .mockResolvedValueOnce({ id: "man", identityStatus: VerificationStatus.VERIFIED, profile: { gender: "Male" } })
+        .mockResolvedValueOnce({ id: "other-man", identityStatus: VerificationStatus.VERIFIED, profile: { gender: "Male" } }),
+    };
+    const service = new MatchesService(
+      users as never,
+      {} as never,
+      { exists: jest.fn() } as never,
+      {} as never,
+      {} as never,
+      { get: jest.fn().mockReturnValue("false") } as never,
+    );
+    await expect(service.like("man", "other-man")).rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it("does not expose Discover suggestions to unverified members", async () => {
     const users = {
       findOne: jest.fn().mockResolvedValue({

@@ -1,4 +1,5 @@
-import { IsArray, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from "class-validator";
+import { IsArray, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from "class-validator";
+import { PROFILE_GENDERS } from "../../users/gender";
 
 export class CreateOnboardingDto {
   @IsOptional()
@@ -24,7 +25,7 @@ export class CreateOnboardingDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(20)
+  @IsIn(PROFILE_GENDERS)
   gender?: string;
 
   @IsOptional()
