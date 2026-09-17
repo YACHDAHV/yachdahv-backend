@@ -6,6 +6,7 @@ import {
   ConnectedSocket,
   MessageBody,
   OnGatewayConnection,
+  OnGatewayDisconnect,
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
@@ -16,8 +17,13 @@ import { AuthenticatedUser } from "../auth/auth.types";
 import { Message } from "../database/entities";
 import { MessagesService } from "./messages.service";
 
-type ChatSocket = Socket & { data: { user?: AuthenticatedUser } };
-type Acknowledge = (result: { ok: true; message?: Message } | { ok: false; error: string }) => void;
+type ChatSocket = Socket & { data: { user?: AuthenticatedUser; watchingPresence?: string } };
+type Acknowledge = (result: {
+  ok: true;
+  message?: Message;
+  peerId?: string;
+  peerOnline?: boolean;
+} | { ok: false; error: string }) => void;
 
 @WebSocketGateway({
   namespace: "/chat",
@@ -26,11 +32,12 @@ type Acknowledge = (result: { ok: true; message?: Message } | { ok: false; error
     credentials: true,
   },
 })
-export class MessagesGateway implements OnGatewayConnection {
+export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   private server!: Server;
 
   private readonly logger = new Logger(MessagesGateway.name);
+  private readonly connections = new Map<string, Set<string>>();
 
   constructor(
     private readonly jwt: JwtService,
@@ -52,6 +59,7 @@ export class MessagesGateway implements OnGatewayConnection {
 
       client.data.user = payload;
       await client.join(this.userRoom(payload.sub));
+      this.markOnline(payload.sub, client.id);
 
       if (payload.exp) {
         const expiresIn = payload.exp * 1000 - Date.now();
@@ -67,6 +75,12 @@ export class MessagesGateway implements OnGatewayConnection {
     }
   }
 
+  handleDisconnect(client: ChatSocket) {
+    const userId = client.data.user?.sub;
+    if (!userId) return;
+    this.markOffline(userId, client.id);
+  }
+
   @SubscribeMessage("conversation:join")
   async joinConversation(
     @ConnectedSocket() client: ChatSocket,
@@ -78,7 +92,16 @@ export class MessagesGateway implements OnGatewayConnection {
       const conversationId = this.conversationId(payload);
       await this.messages.assertConversationMember(userId, conversationId);
       await client.join(this.conversationRoom(conversationId));
-      acknowledge?.({ ok: true });
+
+      const [userAId, userBId] = await this.messages.participantIds(conversationId);
+      const peerId = userAId === userId ? userBId : userAId;
+      if (client.data.watchingPresence && client.data.watchingPresence !== peerId) {
+        await client.leave(this.presenceRoom(client.data.watchingPresence));
+      }
+      client.data.watchingPresence = peerId;
+      await client.join(this.presenceRoom(peerId));
+
+      acknowledge?.({ ok: true, peerId, peerOnline: this.isOnline(peerId) });
     } catch (error) {
       acknowledge?.({ ok: false, error: this.errorMessage(error) });
     }
@@ -130,6 +153,34 @@ export class MessagesGateway implements OnGatewayConnection {
     this.server.to(this.userRoom(userAId)).to(this.userRoom(userBId)).emit("message:new", message);
   }
 
+  private markOnline(userId: string, socketId: string) {
+    const sockets = this.connections.get(userId) ?? new Set<string>();
+    const wasOffline = sockets.size === 0;
+    sockets.add(socketId);
+    this.connections.set(userId, sockets);
+    if (wasOffline) this.emitPresence(userId, true);
+  }
+
+  private markOffline(userId: string, socketId: string) {
+    const sockets = this.connections.get(userId);
+    if (!sockets) return;
+    sockets.delete(socketId);
+    if (sockets.size === 0) {
+      this.connections.delete(userId);
+      this.emitPresence(userId, false);
+    } else {
+      this.connections.set(userId, sockets);
+    }
+  }
+
+  private isOnline(userId: string) {
+    return (this.connections.get(userId)?.size ?? 0) > 0;
+  }
+
+  private emitPresence(userId: string, online: boolean) {
+    this.server.to(this.presenceRoom(userId)).emit("presence:update", { userId, online });
+  }
+
   private userId(client: ChatSocket) {
     if (!client.data.user?.sub) throw new Error("Authentication is required");
     return client.data.user.sub;
@@ -155,4 +206,5 @@ export class MessagesGateway implements OnGatewayConnection {
 
   private userRoom(userId: string) { return `user:${userId}`; }
   private conversationRoom(conversationId: string) { return `conversation:${conversationId}`; }
+  private presenceRoom(userId: string) { return `presence:${userId}`; }
 }
