@@ -94,8 +94,14 @@ export class MatchesService {
     query.andWhere("LOWER(profile.gender) = LOWER(:seeking)", { seeking });
     if (me.preference?.minAge) query.andWhere("profile.age >= :minAge", { minAge: me.preference.minAge });
     if (me.preference?.maxAge) query.andWhere("profile.age <= :maxAge", { maxAge: me.preference.maxAge });
-    if (me.preference?.location) query.andWhere("LOWER(profile.city) = LOWER(:location)", { location: me.preference.location });
-    return query.getMany();
+    const candidates = await query.getMany();
+    if (!me.preference?.location || me.preference.location.toLowerCase().includes("anywhere")) return candidates;
+    const preferred = candidates.filter((candidate) => {
+      const city = (candidate.profile?.city || "").toLowerCase();
+      const wanted = me.preference!.location!.toLowerCase();
+      return city === wanted || city.includes(wanted) || wanted.includes(city);
+    });
+    return preferred.length ? preferred : candidates;
   }
 
   async list(userId: string) {
@@ -129,6 +135,7 @@ export class MatchesService {
     const result = await this.matches.manager.transaction(async (manager) => {
       let match = await manager.findOne(Match, { where: { userAId, userBId } });
       match ??= manager.create(Match, { userAId, userBId, likedByA: false, likedByB: false });
+      const alreadyLiked = userId === userAId ? match.likedByA : match.likedByB;
       if (userId === userAId) match.likedByA = true;
       else match.likedByB = true;
       if (match.likedByA && match.likedByB) {
@@ -140,6 +147,14 @@ export class MatchesService {
           manager.create(Notification, { userId: userAId, type: "match", title: "It’s a match", body: "You have a new mutual match.", data: { memberId: userBId } }),
           manager.create(Notification, { userId: userBId, type: "match", title: "It’s a match", body: "You have a new mutual match.", data: { memberId: userAId } }),
         ]);
+      } else if (!alreadyLiked) {
+        await manager.save(Notification, manager.create(Notification, {
+          userId: targetId,
+          type: "match_invite",
+          title: "New match invite",
+          body: `${member.name} sent you a match invite.`,
+          data: { memberId: userId },
+        }));
       }
       return manager.save(Match, match);
     });
