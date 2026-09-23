@@ -1,6 +1,7 @@
 import { IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from "class-validator";
 import { Type } from "class-transformer";
 import { PROFILE_GENDERS } from "../gender";
+import { PersonalityDto } from "../personality";
 
 class PhotoDto {
   @IsString()
@@ -34,6 +35,7 @@ export class UpdateProfileDto {
   @IsOptional() @IsInt() @Min(100) @Max(250) heightCm?: number;
   @IsOptional() @IsArray() @IsString({ each: true }) interests?: string[];
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => PhotoDto) photos?: PhotoDto[];
+  @IsOptional() @ValidateNested() @Type(() => PersonalityDto) personality?: PersonalityDto;
 }
 
 export class UpdatePreferencesDto {

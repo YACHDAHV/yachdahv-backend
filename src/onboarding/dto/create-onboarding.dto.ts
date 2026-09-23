@@ -1,5 +1,7 @@
-import { IsArray, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from "class-validator";
+import { IsArray, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested } from "class-validator";
+import { Type } from "class-transformer";
 import { PROFILE_GENDERS } from "../../users/gender";
+import { PersonalityDto } from "../../users/personality";
 
 export class CreateOnboardingDto {
   @IsOptional()
@@ -89,4 +91,9 @@ export class CreateOnboardingDto {
   @IsString()
   @MaxLength(100)
   education?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PersonalityDto)
+  personality?: PersonalityDto;
 }

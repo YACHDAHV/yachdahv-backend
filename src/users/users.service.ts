@@ -6,6 +6,7 @@ import { Preference, Profile, User, UserStatus } from "../database/entities";
 import { ChangePasswordDto } from "./dto/change-password.dto";
 import { UpdatePreferencesDto, UpdateProfileDto } from "./dto/update-user.dto";
 import { normalizeGender } from "./gender";
+import { mergePersonality } from "./personality";
 
 @Injectable()
 export class UsersService {
@@ -30,9 +31,10 @@ export class UsersService {
       await this.users.save(user);
     }
     const profile = await this.profiles.findOneBy({ userId }) ?? this.profiles.create({ userId, interests: [], photos: [] });
-    const { name: _name, gender, ...profileFields } = payload;
+    const { name: _name, gender, personality, ...profileFields } = payload;
     Object.assign(profile, profileFields);
     if (gender !== undefined) profile.gender = normalizeGender(gender);
+    if (personality !== undefined) profile.personality = mergePersonality(profile.personality, personality);
     await this.profiles.save(profile);
     return this.getMe(userId);
   }

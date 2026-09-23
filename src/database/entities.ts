@@ -11,6 +11,7 @@ import {
   Relation,
   UpdateDateColumn,
 } from "typeorm";
+import type { Personality } from "../users/personality";
 
 export enum UserRole {
   MEMBER = "member",
@@ -179,6 +180,9 @@ export class Profile {
 
   @Column({ type: "jsonb", default: () => "'[]'::jsonb" })
   photos!: Array<{ key: string; url?: string; primary?: boolean }>;
+
+  @Column({ type: "jsonb", default: () => "'{}'::jsonb" })
+  personality!: Personality;
 
   @CreateDateColumn({ name: "created_at" })
   createdAt!: Date;

@@ -5,6 +5,7 @@ import { Preference, Profile, User } from "../database/entities";
 import { AdminEmailAlertsService } from "../email/admin-email-alerts.service";
 import { InvitationsService } from "../invitations/invitations.service";
 import { normalizeGender } from "../users/gender";
+import { mergePersonality } from "../users/personality";
 import { CreateOnboardingDto } from "./dto/create-onboarding.dto";
 
 @Injectable()
@@ -74,6 +75,7 @@ export class OnboardingService {
         intention: payload.intent ?? profile.intention,
         interests: payload.interests?.slice(0, 5) ?? profile.interests,
         education: payload.education ?? profile.education,
+        personality: mergePersonality(profile.personality, payload.personality),
       });
       await manager.save(Profile, profile);
 

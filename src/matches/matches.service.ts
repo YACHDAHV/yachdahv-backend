@@ -246,16 +246,23 @@ export class MatchesService {
     const sameDenomination = Boolean(mine?.denomination && mine.denomination === theirs?.denomination);
     const sameChurch = Boolean(mine?.church && mine.church === theirs?.church);
     const sameCity = Boolean(mine?.city && mine.city === theirs?.city);
-    const compatibility = Math.min(99, 60 + sharedInterests.length * 5 + (sameDenomination ? 12 : 0) + (sameChurch ? 12 : 0) + (sameCity ? 8 : 0));
+    // Vibe check answers: a shared love language, or each person being the Bible character the other admires.
+    const sameLoveLanguage = Boolean(mine?.personality?.loveLanguage && mine.personality.loveLanguage === theirs?.personality?.loveLanguage);
+    const admiredMatches = [
+      Boolean(mine?.personality?.admiredCharacter && mine.personality.admiredCharacter === theirs?.personality?.bibleCharacter),
+      Boolean(theirs?.personality?.admiredCharacter && theirs.personality.admiredCharacter === mine?.personality?.bibleCharacter),
+    ].filter(Boolean).length;
+    const compatibility = Math.min(99, 60 + sharedInterests.length * 5 + (sameDenomination ? 12 : 0) + (sameChurch ? 12 : 0) + (sameCity ? 8 : 0) + (sameLoveLanguage ? 6 : 0) + admiredMatches * 4);
     const sharedValues = [
       ...(sameDenomination ? ["Faith"] : []),
       ...(sameChurch ? ["Church community"] : []),
+      ...(sameLoveLanguage ? [`Love language: ${mine!.personality.loveLanguage}`] : []),
       ...sharedInterests,
     ].slice(0, 3);
     return {
       compatibility,
       sharedValues,
-      badges: [sameDenomination ? "Same denomination" : null, sameChurch ? "Attends same church" : null, sameCity ? "Same city" : null].filter(Boolean),
+      badges: [sameDenomination ? "Same denomination" : null, sameChurch ? "Attends same church" : null, sameCity ? "Same city" : null, sameLoveLanguage ? "Same love language" : null].filter(Boolean),
     };
   }
 
