@@ -18,8 +18,8 @@ describe("backend domain rules", () => {
   it("does not let members like someone of the same gender", async () => {
     const users = {
       findOne: jest.fn()
-        .mockResolvedValueOnce({ id: "man", identityStatus: VerificationStatus.VERIFIED, profile: { gender: "Male" } })
-        .mockResolvedValueOnce({ id: "other-man", identityStatus: VerificationStatus.VERIFIED, profile: { gender: "Male" } }),
+        .mockResolvedValueOnce({ id: "man", identityStatus: VerificationStatus.VERIFIED, sensitiveDataConsentAt: new Date(), profile: { gender: "Male" } })
+        .mockResolvedValueOnce({ id: "other-man", identityStatus: VerificationStatus.VERIFIED, sensitiveDataConsentAt: new Date(), profile: { gender: "Male" } }),
     };
     const service = new MatchesService(
       users as never,
@@ -104,7 +104,7 @@ describe("backend domain rules", () => {
   });
 
   it("enforces the five-interest onboarding rule", async () => {
-    const service = new UsersService({} as never, {} as never, {} as never);
+    const service = new UsersService({} as never, {} as never, {} as never, {} as never);
     await expect(service.updateProfile("user", { interests: ["1", "2", "3", "4", "5", "6"] }))
       .rejects.toBeInstanceOf(BadRequestException);
   });

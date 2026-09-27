@@ -45,7 +45,7 @@ describe("Prembly identity verification", () => {
   });
 
   it("auto-verifies a Nigerian NIN after liveness and face match succeed", async () => {
-    const user = { id: "user-1", name: "Ada", email: "ada@example.com", identityStatus: VerificationStatus.NOT_STARTED };
+    const user = { id: "user-1", name: "Ada", email: "ada@example.com", identityStatus: VerificationStatus.NOT_STARTED, biometricConsentAt: new Date() };
     const submissions = {
       exists: jest.fn().mockResolvedValue(false),
       create: jest.fn((value) => value),
@@ -91,7 +91,7 @@ describe("Prembly identity verification", () => {
   });
 
   it("rejects a global document when liveness fails", async () => {
-    const user = { id: "user-1", name: "Ada", email: "ada@example.com", identityStatus: VerificationStatus.NOT_STARTED };
+    const user = { id: "user-1", name: "Ada", email: "ada@example.com", identityStatus: VerificationStatus.NOT_STARTED, biometricConsentAt: new Date() };
     const submissions = {
       exists: jest.fn().mockResolvedValue(false),
       create: jest.fn((value) => value),
@@ -136,7 +136,7 @@ describe("Prembly identity verification", () => {
     const users = {
       findOneBy: jest.fn().mockResolvedValue({
         id: "user-2",
-        identityStatus: VerificationStatus.NOT_STARTED,
+        identityStatus: VerificationStatus.NOT_STARTED, biometricConsentAt: new Date(),
       }),
     };
     const storage = { assertOwnedPrivateKey: jest.fn() };

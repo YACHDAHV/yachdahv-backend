@@ -124,6 +124,8 @@ export class RelationshipToolsService {
     if (memberId) query.andWhere("(match.userAId = :memberId OR match.userBId = :memberId)", { memberId });
     const match = await query.getOne();
     if (!match) throw new ForbiddenException("Relationship tools are available after a mutual match");
+    const me = match.userAId === userId ? match.userA : match.userB;
+    if (!me?.sensitiveDataConsentAt) throw new ForbiddenException("Give consent to process your faith and relationship data to use relationship tools");
     return match;
   }
 

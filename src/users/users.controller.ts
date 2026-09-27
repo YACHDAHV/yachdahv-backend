@@ -1,10 +1,11 @@
-import { Body, Controller, Delete, Get, Patch, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Headers, Ip, Patch, Post, UseGuards } from "@nestjs/common";
 import { CurrentUser } from "../auth/auth.decorators";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { ChangePasswordDto } from "./dto/change-password.dto";
 import { UpdatePreferencesDto, UpdateProfileDto } from "./dto/update-user.dto";
 import { UsersService } from "./users.service";
+import { UpdateConsentDto } from "./consent";
 
 @UseGuards(JwtAuthGuard)
 @Controller("users/me")
@@ -27,6 +28,14 @@ export class UsersController {
   @Patch("password")
   changePassword(@CurrentUser() user: AuthenticatedUser, @Body() payload: ChangePasswordDto) {
     return this.users.changePassword(user.sub, payload);
+  }
+
+  @Get("consents")
+  consentHistory(@CurrentUser() user: AuthenticatedUser) { return this.users.consentHistory(user.sub); }
+
+  @Post("consents")
+  recordConsent(@CurrentUser() user: AuthenticatedUser, @Body() payload: UpdateConsentDto, @Ip() ipAddress: string, @Headers("user-agent") userAgent?: string) {
+    return this.users.recordConsent(user.sub, payload, { ipAddress, userAgent });
   }
 
   @Delete()

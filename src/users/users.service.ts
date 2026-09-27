@@ -2,11 +2,12 @@ import { BadRequestException, Injectable, NotFoundException, UnauthorizedExcepti
 import { InjectRepository } from "@nestjs/typeorm";
 import { compare, hash } from "bcryptjs";
 import { Repository } from "typeorm";
-import { Preference, Profile, User, UserStatus } from "../database/entities";
+import { ConsentRecord, Preference, Profile, User, UserStatus } from "../database/entities";
 import { ChangePasswordDto } from "./dto/change-password.dto";
 import { UpdatePreferencesDto, UpdateProfileDto } from "./dto/update-user.dto";
 import { normalizeGender } from "./gender";
 import { mergePersonality } from "./personality";
+import { PRIVACY_POLICY_VERSION, UpdateConsentDto } from "./consent";
 
 @Injectable()
 export class UsersService {
@@ -14,6 +15,7 @@ export class UsersService {
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
     @InjectRepository(Preference) private readonly preferences: Repository<Preference>,
+    @InjectRepository(ConsentRecord) private readonly consents: Repository<ConsentRecord>,
   ) {}
 
   async getMe(userId: string) {
@@ -58,6 +60,30 @@ export class UsersService {
     }
     await this.users.update(userId, { passwordHash: await hash(payload.newPassword, 12) });
     return { success: true };
+  }
+
+  /** Records a grant or withdrawal of an explicit consent and updates the user's current state. */
+  async recordConsent(userId: string, payload: UpdateConsentDto, context: { ipAddress?: string; userAgent?: string } = {}) {
+    const user = await this.users.findOneBy({ id: userId });
+    if (!user) throw new NotFoundException("User was not found");
+    await this.consents.save(this.consents.create({
+      userId,
+      type: payload.type,
+      granted: payload.granted,
+      policyVersion: PRIVACY_POLICY_VERSION,
+      ipAddress: context.ipAddress?.slice(0, 64) ?? null,
+      userAgent: context.userAgent?.slice(0, 300) ?? null,
+    }));
+    const at = payload.granted ? new Date() : null;
+    if (payload.type === "sensitive_data") user.sensitiveDataConsentAt = at;
+    else user.biometricConsentAt = at;
+    if (payload.granted) user.consentPolicyVersion = PRIVACY_POLICY_VERSION;
+    await this.users.save(user);
+    return this.getMe(userId);
+  }
+
+  consentHistory(userId: string) {
+    return this.consents.find({ where: { userId }, order: { createdAt: "DESC" } });
   }
 
   async deactivate(userId: string) {

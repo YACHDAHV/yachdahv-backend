@@ -43,6 +43,7 @@ export class OnboardingService {
   }
 
   private async persist(user: User, payload: CreateOnboardingDto) {
+    if (!user.sensitiveDataConsentAt) throw new BadRequestException("Please give consent to process your faith and relationship data before completing your profile");
     const bio = payload.bio?.trim();
     const inviteCode = payload.inviteCode?.trim();
     if (!payload.age) throw new BadRequestException("Age is required");

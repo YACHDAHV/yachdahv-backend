@@ -45,6 +45,7 @@ export class VerificationService {
     if (user.identityStatus === VerificationStatus.VERIFIED) {
       throw new ConflictException("Your identity is already verified");
     }
+    if (!user.biometricConsentAt) throw new BadRequestException("Please consent to biometric processing before verifying your identity");
     const pending = await this.submissions.exists({ where: { userId, status: VerificationStatus.SUBMITTED } });
     if (pending) throw new ConflictException("A verification submission is already being reviewed");
 

@@ -67,6 +67,8 @@ export class MatchesService {
     if (!me) throw new NotFoundException("User was not found");
     this.requireVerified(me);
     if (!(await this.controls()).matching) throw new ForbiddenException("Matching is temporarily paused");
+    // Matching uses faith and relationship data, so only members who have consented take part.
+    if (!me.sensitiveDataConsentAt) return [];
 
     const blockedRows = await this.blocks.createQueryBuilder("block")
       .where("block.blockerId = :userId OR block.blockedId = :userId", { userId })
@@ -87,6 +89,7 @@ export class MatchesService {
       .where("user.status = :status", { status: UserStatus.ACTIVE })
       .andWhere("user.role = :role", { role: UserRole.MEMBER })
       .andWhere("user.id NOT IN (:...excluded)", { excluded: [...excluded] })
+      .andWhere("user.sensitiveDataConsentAt IS NOT NULL")
       .take(Math.min(Math.max(limit, 1), 50));
     if (this.verificationRequired()) query.andWhere("user.identityStatus = :verification", { verification: VerificationStatus.VERIFIED });
     const seeking = oppositeGender(me.profile?.gender);
@@ -125,6 +128,8 @@ export class MatchesService {
     if (!member) throw new NotFoundException("User was not found");
     this.requireVerified(member);
     if (!(await this.controls()).matching) throw new ForbiddenException("Matching is temporarily paused");
+    if (!member.sensitiveDataConsentAt) throw new ForbiddenException("Give consent to process your faith and relationship data to use matching");
+    if (!targetExists?.sensitiveDataConsentAt) throw new NotFoundException("Member was not found");
     if (!targetExists || (this.verificationRequired() && targetExists.identityStatus !== VerificationStatus.VERIFIED)) throw new NotFoundException("Member was not found");
     this.assertOppositeGender(member, targetExists);
     if (await this.blocks.exists({ where: [{ blockerId: userId, blockedId: targetId }, { blockerId: targetId, blockedId: userId }] })) {

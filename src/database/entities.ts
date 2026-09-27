@@ -97,6 +97,16 @@ export class User {
   @Column({ name: "admin_preferences", type: "jsonb", default: () => "'{}'::jsonb" })
   adminPreferences!: Record<string, boolean>;
 
+  // Current NDPA consent state; the full history lives in consent_records.
+  @Column({ name: "sensitive_data_consent_at", type: "timestamptz", nullable: true })
+  sensitiveDataConsentAt!: Date | null;
+
+  @Column({ name: "biometric_consent_at", type: "timestamptz", nullable: true })
+  biometricConsentAt!: Date | null;
+
+  @Column({ name: "consent_policy_version", type: "varchar", length: 20, nullable: true })
+  consentPolicyVersion!: string | null;
+
   @CreateDateColumn({ name: "created_at" })
   createdAt!: Date;
 
@@ -695,6 +705,38 @@ export class RelationshipToolState {
   updatedAt!: Date;
 }
 
+@Entity("consent_records")
+export class ConsentRecord {
+  @PrimaryGeneratedColumn("uuid")
+  id!: string;
+
+  @Index()
+  @Column({ name: "user_id", type: "uuid" })
+  userId!: string;
+
+  @ManyToOne(() => User, { onDelete: "CASCADE" })
+  @JoinColumn({ name: "user_id" })
+  user!: Relation<User>;
+
+  @Column({ type: "varchar", length: 30 })
+  type!: string;
+
+  @Column()
+  granted!: boolean;
+
+  @Column({ name: "policy_version", type: "varchar", length: 20 })
+  policyVersion!: string;
+
+  @Column({ name: "ip_address", type: "varchar", length: 64, nullable: true })
+  ipAddress!: string | null;
+
+  @Column({ name: "user_agent", type: "varchar", length: 300, nullable: true })
+  userAgent!: string | null;
+
+  @CreateDateColumn({ name: "created_at" })
+  createdAt!: Date;
+}
+
 export const databaseEntities = [
   User,
   Profile,
@@ -714,4 +756,5 @@ export const databaseEntities = [
   AuditLog,
   PlatformSetting,
   RelationshipToolState,
+  ConsentRecord,
 ];
