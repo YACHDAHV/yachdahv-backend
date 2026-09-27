@@ -677,10 +677,16 @@ export class RelationshipToolState {
   devotionalDay!: number;
 
   @Column({ type: "jsonb", default: () => "'[]'::jsonb" })
-  reflections!: Array<{ day: number; userId: string; body: string; updatedAt: string }>;
+  reflections!: Array<{ planId?: string; day: number; userId: string; body: string; updatedAt: string }>;
+
+  @Column({ name: "devotional_plans", type: "jsonb", default: () => "'[]'::jsonb" })
+  devotionalPlans!: Array<{ planId: string; startedBy: string; startedAt: string }>;
 
   @Column({ name: "discussed_topics", type: "text", array: true, default: "{}" })
   discussedTopics!: string[];
+
+  @Column({ name: "topic_responses", type: "jsonb", default: () => "'[]'::jsonb" })
+  topicResponses!: Array<{ topicKey: string; userId: string; body: string; updatedAt: string }>;
 
   @CreateDateColumn({ name: "created_at" })
   createdAt!: Date;
