@@ -6,6 +6,7 @@ import { Block, Conversation, Match, MatchStatus, Notification, User, UserRole, 
 import { EmailService } from "../email/email.service";
 import { PlatformService } from "../platform/platform.service";
 import { normalizeGender, oppositeGender } from "../users/gender";
+import { loveLanguagesOf } from "../users/personality";
 
 @Injectable()
 export class MatchesService {
@@ -252,7 +253,9 @@ export class MatchesService {
     const sameChurch = Boolean(mine?.church && mine.church === theirs?.church);
     const sameCity = Boolean(mine?.city && mine.city === theirs?.city);
     // Vibe check answers: a shared love language, or each person being the Bible character the other admires.
-    const sameLoveLanguage = Boolean(mine?.personality?.loveLanguage && mine.personality.loveLanguage === theirs?.personality?.loveLanguage);
+    const theirLanguages = loveLanguagesOf(theirs?.personality);
+    const sharedLoveLanguage = loveLanguagesOf(mine?.personality).find((language) => theirLanguages.includes(language));
+    const sameLoveLanguage = Boolean(sharedLoveLanguage);
     const admiredMatches = [
       Boolean(mine?.personality?.admiredCharacter && mine.personality.admiredCharacter === theirs?.personality?.bibleCharacter),
       Boolean(theirs?.personality?.admiredCharacter && theirs.personality.admiredCharacter === mine?.personality?.bibleCharacter),
@@ -261,7 +264,7 @@ export class MatchesService {
     const sharedValues = [
       ...(sameDenomination ? ["Faith"] : []),
       ...(sameChurch ? ["Church community"] : []),
-      ...(sameLoveLanguage ? [`Love language: ${mine!.personality.loveLanguage}`] : []),
+      ...(sharedLoveLanguage ? [`Love language: ${sharedLoveLanguage}`] : []),
       ...sharedInterests,
     ].slice(0, 3);
     return {

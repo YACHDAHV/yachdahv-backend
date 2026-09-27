@@ -11,6 +11,12 @@ describe("personality", () => {
     expect(merged).toEqual({ bibleCharacter: "Ruth", loveLanguage: "Acts of service", loveStory: "ruth-boaz" });
   });
 
+  it("stores several love languages and keeps the first as the main one", () => {
+    const merged = mergePersonality({ loveLanguage: "Quality time" }, { loveLanguages: ["Acts of service", "Quality time", "Acts of service"] });
+    expect(merged.loveLanguages).toEqual(["Acts of service", "Quality time"]);
+    expect(merged.loveLanguage).toBe("Acts of service");
+  });
+
   it("trims the verse and drops it when blank", () => {
     expect(mergePersonality({}, { verse: "  Psalm 23  " }).verse).toBe("Psalm 23");
     expect(mergePersonality({ verse: "Psalm 23" }, { verse: "   " })).not.toHaveProperty("verse");
