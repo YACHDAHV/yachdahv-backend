@@ -476,6 +476,10 @@ export class Message {
   @Column({ type: "text" })
   body!: string;
 
+  // Guided conversation tag: { kind: "guided-question" | "guided-answer", topicKey }.
+  @Column({ type: "jsonb", nullable: true })
+  meta!: { kind: string; topicKey: string } | null;
+
   @Column({ name: "read_at", type: "timestamptz", nullable: true })
   readAt!: Date | null;
 

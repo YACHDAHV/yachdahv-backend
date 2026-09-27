@@ -32,7 +32,7 @@ export class MessagesController {
 
   @Post(":id/messages")
   async send(@CurrentUser() user: AuthenticatedUser, @Param("id", ParseUUIDPipe) id: string, @Body() payload: SendMessageDto) {
-    const message = await this.messages.send(user.sub, id, payload.body);
+    const message = await this.messages.send(user.sub, id, payload.body, payload.meta);
     await this.gateway.publishMessage(message);
     return message;
   }

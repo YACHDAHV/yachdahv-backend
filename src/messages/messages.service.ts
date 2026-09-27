@@ -1,7 +1,7 @@
 import { ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Brackets, Repository } from "typeorm";
-import { Block, Conversation, Match, MatchStatus, Message, User } from "../database/entities";
+import { Block, Conversation, Match, MatchStatus, Message, Notification, User } from "../database/entities";
 import { EmailService } from "../email/email.service";
 
 @Injectable()
@@ -14,6 +14,7 @@ export class MessagesService {
     @InjectRepository(Match) private readonly matches: Repository<Match>,
     @InjectRepository(Block) private readonly blocks: Repository<Block>,
     @InjectRepository(User) private readonly users: Repository<User>,
+    @InjectRepository(Notification) private readonly notifications: Repository<Notification>,
     private readonly email: EmailService,
   ) {}
 
@@ -43,24 +44,25 @@ export class MessagesService {
     return this.messages.find({ where: { conversationId }, order: { createdAt: "ASC" }, relations: { sender: true } });
   }
 
-  async send(userId: string, conversationId: string, body: string) {
+  async send(userId: string, conversationId: string, body: string, meta?: { kind?: unknown; topicKey?: unknown } | null) {
     const conversation = await this.assertMember(userId, conversationId);
     const recipientId = conversation.userAId === userId ? conversation.userBId : conversation.userAId;
     if (await this.blocks.exists({ where: [{ blockerId: userId, blockedId: recipientId }, { blockerId: recipientId, blockedId: userId }] })) {
       throw new ForbiddenException("Messaging is unavailable");
     }
-    const message = await this.messages.save(this.messages.create({ conversationId, senderId: userId, body: body.trim(), readAt: null }));
+    const message = await this.messages.save(this.messages.create({ conversationId, senderId: userId, body: body.trim(), readAt: null, meta: cleanMeta(meta) }));
     await this.conversations.update(conversationId, { updatedAt: new Date() });
-    void this.notifyNewMessage(userId, recipientId, message.id, body.trim());
+    void this.notifyNewMessage(userId, recipientId, conversationId, message.id, body.trim());
     return message;
   }
 
-  private async notifyNewMessage(senderId: string, recipientId: string, messageId: string, body: string) {
+  private async notifyNewMessage(senderId: string, recipientId: string, conversationId: string, messageId: string, body: string) {
     try {
       const [sender, recipient] = await Promise.all([
         this.users.findOneBy({ id: senderId }),
         this.users.findOneBy({ id: recipientId }),
       ]);
+      await this.upsertMessageNotification(recipientId, sender?.name ?? "Someone", conversationId, senderId, body);
       if (!recipient?.email) return;
       await this.email.sendNewMessageEmail({
         email: recipient.email,
@@ -74,6 +76,27 @@ export class MessagesService {
     }
   }
 
+  // One in-app notification per unread conversation, refreshed with the latest message.
+  private async upsertMessageNotification(recipientId: string, senderName: string, conversationId: string, senderId: string, body: string) {
+    try {
+      await this.notifications.createQueryBuilder().delete().from(Notification)
+        .where("user_id = :recipientId", { recipientId })
+        .andWhere("type = 'message'")
+        .andWhere("read_at IS NULL")
+        .andWhere("data->>'conversationId' = :conversationId", { conversationId })
+        .execute();
+      await this.notifications.save(this.notifications.create({
+        userId: recipientId,
+        type: "message",
+        title: `New message from ${senderName}`.slice(0, 120),
+        body: body.length > 140 ? `${body.slice(0, 137)}...` : body,
+        data: { conversationId, memberId: senderId },
+      }));
+    } catch (error) {
+      this.logger.error(`Message notification failed for conversation ${conversationId}`, error instanceof Error ? error.stack : undefined);
+    }
+  }
+
   async markRead(userId: string, conversationId: string) {
     await this.assertMember(userId, conversationId);
     const readAt = new Date();
@@ -81,6 +104,12 @@ export class MessagesService {
       .where("conversation_id = :conversationId", { conversationId })
       .andWhere("sender_id != :userId", { userId })
       .andWhere("read_at IS NULL")
+      .execute();
+    await this.notifications.createQueryBuilder().update(Notification).set({ readAt })
+      .where("user_id = :userId", { userId })
+      .andWhere("type = 'message'")
+      .andWhere("read_at IS NULL")
+      .andWhere("data->>'conversationId' = :conversationId", { conversationId })
       .execute();
     return { success: true, readAt };
   }
@@ -113,4 +142,11 @@ export class MessagesService {
     if (!conversation) throw new NotFoundException("Conversation was not found");
     return conversation;
   }
+}
+
+/** Keeps only a valid guided-conversation tag (socket payloads are not DTO-validated). */
+function cleanMeta(meta?: { kind?: unknown; topicKey?: unknown } | null) {
+  if (!meta || !["guided-question", "guided-answer"].includes(String(meta.kind))) return null;
+  const topicKey = typeof meta.topicKey === "string" ? meta.topicKey.trim().slice(0, 100) : "";
+  return topicKey ? { kind: String(meta.kind), topicKey } : null;
 }

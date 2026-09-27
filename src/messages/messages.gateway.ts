@@ -110,7 +110,7 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
   @SubscribeMessage("message:send")
   async sendMessage(
     @ConnectedSocket() client: ChatSocket,
-    @MessageBody() payload: { conversationId?: string; body?: string },
+    @MessageBody() payload: { conversationId?: string; body?: string; meta?: { kind?: unknown; topicKey?: unknown } },
     @Ack() acknowledge?: Acknowledge,
   ) {
     try {
@@ -119,7 +119,7 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
       const body = typeof payload?.body === "string" ? payload.body.trim() : "";
       if (!body || body.length > 2000) throw new Error("Message must be between 1 and 2000 characters");
 
-      const message = await this.messages.send(userId, conversationId, body);
+      const message = await this.messages.send(userId, conversationId, body, payload?.meta);
       await this.publishMessage(message);
       acknowledge?.({ ok: true, message });
     } catch (error) {
