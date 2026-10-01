@@ -90,6 +90,10 @@ export class VerificationService {
       const result = isNin
         ? await this.verifyNigerian(userId, payload.nin!, payload.selfieKey)
         : await this.verifyDocument(userId, payload);
+      if (result.status === VerificationStatus.VERIFIED && this.prembly.isSandbox()) {
+        // Sandbox responses are sample data; never let them verify a real account.
+        return this.finalize(user, submission, { ...result, status: VerificationStatus.SUBMITTED, note: "Prembly sandbox result. An administrator will review this submission." });
+      }
       return this.finalize(user, submission, result);
     } catch (error) {
       this.logger.error(`Prembly verification failed for user ${userId}`, error instanceof Error ? error.stack : undefined);
@@ -106,7 +110,8 @@ export class VerificationService {
     const submission = await this.submissions.findOneBy({ id: submissionId });
     if (!submission || submission.status !== VerificationStatus.SUBMITTED) return { received: true };
     const verification = asRecord(payload.verification);
-    const verified = payload.status === true || String(verification.status ?? "").toUpperCase() === "VERIFIED";
+    // Same rules as the live check: `status: true` alone only means Prembly processed the request.
+    const verified = !this.prembly.isSandbox() && this.prembly.isSuccessful(payload, submission.documentType === "nin" ? "nin" : "document");
     submission.provider = "prembly";
     submission.providerReference = String(verification.reference ?? payload.reference_id ?? submission.providerReference ?? "");
     submission.providerPayload = { ...submission.providerPayload, webhook: sanitizePremblyPayload(payload) };

@@ -74,4 +74,62 @@ describe("waitlist invitations", () => {
     expect(query.andWhere).toHaveBeenCalledWith("LOWER(invite.email) = LOWER(:email)", { email: "member@example.com" });
     expect(manager.getRepository).toHaveBeenCalledWith(Church);
   });
+
+  describe("a church that isn't listed", () => {
+    function setup({ inviteChurchId = null as string | null, existing = null as Record<string, unknown> | null } = {}) {
+      const invite = { id: "invite", email: "member@example.com", churchId: inviteChurchId, status: WaitlistInviteStatus.PENDING, expiresAt: new Date(Date.now() + 60_000) };
+      const inviteQuery = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(), setLock: jest.fn().mockReturnThis(), getOne: jest.fn().mockResolvedValue(invite),
+      };
+      const churchQuery = { where: jest.fn().mockReturnThis(), orderBy: jest.fn().mockReturnThis(), getOne: jest.fn().mockResolvedValue(existing) };
+      const churches = {
+        createQueryBuilder: jest.fn(() => churchQuery),
+        create: jest.fn((value) => value),
+        save: jest.fn(async (value) => ({ id: "new-church", ...value })),
+        findOneBy: jest.fn(),
+      };
+      const manager = {
+        getRepository: jest.fn((entity) => entity === WaitlistInvite ? { createQueryBuilder: () => inviteQuery } : churches),
+        save: jest.fn(),
+      };
+      const users = { findOneBy: jest.fn().mockResolvedValue({ id: "user", email: "member@example.com", emailVerified: true }) };
+      const service = new InvitationsService({} as never, { manager } as never, users as never, config, {} as never);
+      const user = { id: "user", email: "member@example.com", emailVerified: true };
+      return { service, churches, churchQuery, manager, user };
+    }
+    const code = "YDV-2345-6789-ABCD";
+
+    it("validates without adding anything to the directory", async () => {
+      const { service, churches } = setup();
+      await expect(service.validateForUser("user", { churchName: "  Grace   Assembly ", code })).resolves.toMatchObject({ church: { name: "Grace Assembly", active: false } });
+      expect(churches.save).not.toHaveBeenCalled();
+    });
+
+    it("adds the church as inactive for admin review when the invitation is redeemed", async () => {
+      const { service, churches, manager, user } = setup();
+      const invite = await service.consumeForUser(user as never, { churchName: "Grace Assembly" }, code, manager as never);
+      expect(churches.save).toHaveBeenCalledWith({ name: "Grace Assembly", active: false });
+      expect(invite.church).toMatchObject({ id: "new-church", name: "Grace Assembly", active: false });
+    });
+
+    it("reuses a directory church with the same name instead of duplicating it", async () => {
+      const daystar = { id: "daystar", name: "Daystar", active: true };
+      const { service, churches, churchQuery, manager, user } = setup({ existing: daystar });
+      const invite = await service.consumeForUser(user as never, { churchName: "daystar" }, code, manager as never);
+      expect(churchQuery.where).toHaveBeenCalledWith("LOWER(church.name) = LOWER(:name)", { name: "daystar" });
+      expect(invite.church).toBe(daystar);
+      expect(churches.save).not.toHaveBeenCalled();
+    });
+
+    it("refuses a typed name when the invitation is tied to a listed church", async () => {
+      const { service } = setup({ inviteChurchId: "632b3952-5664-4d93-b6fd-ddd87cfdb196" });
+      await expect(service.validateForUser("user", { churchName: "Grace Assembly", code })).rejects.toThrow("choose it from the list");
+    });
+
+    it("requires either a listed church or a name", async () => {
+      const { service } = setup();
+      await expect(service.validateForUser("user", { code })).rejects.toThrow("Choose your church or enter its name");
+    });
+  });
 });

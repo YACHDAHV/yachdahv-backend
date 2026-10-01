@@ -5,7 +5,10 @@ import { createHmac, randomInt } from "node:crypto";
 import { EntityManager, Repository } from "typeorm";
 import { Church, User, UserRole, WaitlistInvite, WaitlistInviteStatus } from "../database/entities";
 import { EmailService } from "../email/email.service";
-import { BatchWaitlistInviteDto, CreateChurchDto, CreateWaitlistInviteDto, normalizeInviteCode, UpdateChurchDto, ValidateWaitlistInviteDto } from "./dto/invitation.dto";
+import { BatchWaitlistInviteDto, CreateChurchDto, CreateWaitlistInviteDto, normalizeChurchName, normalizeInviteCode, UpdateChurchDto, ValidateWaitlistInviteDto } from "./dto/invitation.dto";
+
+/** A church picked from the directory, or the name of one the member says isn't listed. */
+export type ChurchChoice = { churchId?: string; churchName?: string };
 
 const CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 
@@ -18,6 +21,11 @@ export class InvitationsService {
     private readonly config: ConfigService,
     private readonly email: EmailService,
   ) {}
+
+  /** Invitation codes are paused unless INVITE_CODE_REQUIRED=true; members then join by choosing their church. */
+  inviteCodeRequired() {
+    return String(this.config.get<string>("INVITE_CODE_REQUIRED") ?? "false").toLowerCase() === "true";
+  }
 
   listChurches(includeInactive = false) {
     return this.churches.find({ where: includeInactive ? {} : { active: true }, order: { name: "ASC" } });
@@ -116,13 +124,13 @@ export class InvitationsService {
   async validateForUser(userId: string, payload: ValidateWaitlistInviteDto) {
     const user = await this.users.findOneBy({ id: userId });
     if (!user?.email || !user.emailVerified) throw new BadRequestException("Your account must have a verified email address");
-    const invite = await this.findValid(user.email, payload.churchId, payload.code, this.invites.manager);
+    const invite = await this.findValid(user.email, payload, payload.code, this.invites.manager);
     return { valid: true, inviteId: invite.id, church: invite.church, expiresAt: invite.expiresAt };
   }
 
-  async consumeForUser(user: User, churchId: string, code: string, manager: EntityManager) {
+  async consumeForUser(user: User, choice: ChurchChoice, code: string, manager: EntityManager) {
     if (!user.email || !user.emailVerified) throw new BadRequestException("Your account must have a verified email address");
-    const invite = await this.findValid(user.email, churchId, code, manager, true);
+    const invite = await this.findValid(user.email, choice, code, manager, true);
     invite.status = WaitlistInviteStatus.REDEEMED;
     invite.redeemedById = user.id;
     invite.redeemedAt = new Date();
@@ -169,7 +177,7 @@ export class InvitationsService {
     return { invite: this.view(invite), code };
   }
 
-  private async findValid(email: string, churchId: string, code: string, manager: EntityManager, lock = false) {
+  private async findValid(email: string, choice: ChurchChoice, code: string, manager: EntityManager, lock = false) {
     const query = manager.getRepository(WaitlistInvite).createQueryBuilder("invite")
       .where("invite.codeHash = :codeHash", { codeHash: this.hashCode(code) })
       .andWhere("LOWER(invite.email) = LOWER(:email)", { email: email.trim() })
@@ -181,11 +189,35 @@ export class InvitationsService {
     }
     const invite = await query.getOne();
     if (!invite || invite.expiresAt <= new Date()) throw new BadRequestException("This invitation code is invalid or has expired");
-    if (invite.churchId && invite.churchId !== churchId) throw new BadRequestException("This invitation code does not match the selected church");
-    const church = await manager.getRepository(Church).findOneBy({ id: churchId, active: true });
-    if (!church) throw new BadRequestException("Select an active church");
-    invite.church = church;
+    invite.church = await this.resolveChurch(invite, choice, manager, lock);
     return invite;
+  }
+
+  /**
+   * A listed church must be active and match a church-bound invitation. An unlisted name reuses a
+   * directory church with the same name, otherwise it is added as inactive (when the invitation is
+   * redeemed) so admins can review it and activate it for everyone.
+   */
+  private async resolveChurch(invite: WaitlistInvite, choice: ChurchChoice, manager: EntityManager, create: boolean) {
+    if (choice.churchId && invite.churchId && invite.churchId !== choice.churchId) throw new BadRequestException("This invitation code does not match the selected church");
+    if (!choice.churchId && invite.churchId) throw new BadRequestException("This invitation code is for a church in the list. Please choose it from the list.");
+    return this.resolveChurchChoice(choice, manager, create);
+  }
+
+  /** The member's church: an active listed one, or (for an unlisted name) a matching or newly added inactive one. */
+  async resolveChurchChoice(choice: ChurchChoice, manager: EntityManager, create: boolean) {
+    const churches = manager.getRepository(Church);
+    if (choice.churchId) {
+      const church = await churches.findOneBy({ id: choice.churchId, active: true });
+      if (!church) throw new BadRequestException("Select an active church");
+      return church;
+    }
+    const name = normalizeChurchName(choice.churchName);
+    if (typeof name !== "string" || name.length < 2) throw new BadRequestException("Choose your church or enter its name");
+    const existing = await churches.createQueryBuilder("church").where("LOWER(church.name) = LOWER(:name)", { name }).orderBy("church.active", "DESC").getOne();
+    if (existing?.active || (existing && create)) return existing;
+    const church = churches.create({ name, active: false });
+    return create ? churches.save(church) : church;
   }
 
   private generateCode() {

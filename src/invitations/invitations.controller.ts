@@ -12,6 +12,7 @@ import { InvitationsService } from "./invitations.service";
 export class OnboardingInvitationsController {
   constructor(private readonly invitations: InvitationsService) {}
   @Get("churches") churches() { return this.invitations.listChurches(); }
+  @Get("invitation/settings") invitationSettings() { return { required: this.invitations.inviteCodeRequired() }; }
   @Throttle({ default: { limit: 3, ttl: 600_000 } })
   @Post("invitation/request") request(@CurrentUser() user: AuthenticatedUser, @Body() payload: RequestWaitlistInviteDto = {}) { return this.invitations.requestForUser(user.sub, payload.churchId); }
   @Throttle({ default: { limit: 8, ttl: 60_000 } })

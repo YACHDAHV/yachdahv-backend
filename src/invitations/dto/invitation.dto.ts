@@ -3,6 +3,11 @@ import { IsArray, IsBoolean, IsEmail, IsInt, IsOptional, IsString, IsUUID, Match
 
 const INVITE_CODE_BODY = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 
+/** Trims and collapses spaces in a church name typed by a member. */
+export function normalizeChurchName(value: unknown) {
+  return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : value;
+}
+
 export function normalizeInviteCode(value: unknown) {
   if (typeof value !== "string") return value;
   const compact = value.toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -43,7 +48,13 @@ export class RequestWaitlistInviteDto {
 }
 
 export class ValidateWaitlistInviteDto {
-  @IsUUID() churchId!: string;
+  // Either a church from the directory, or the name of one that isn't listed.
+  @IsOptional() @IsUUID() churchId?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => normalizeChurchName(value))
+  @IsString() @MinLength(2) @MaxLength(80)
+  churchName?: string;
 
   @Transform(({ value }) => normalizeInviteCode(value))
   @IsString()

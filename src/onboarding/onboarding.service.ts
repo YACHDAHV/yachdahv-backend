@@ -50,13 +50,17 @@ export class OnboardingService {
     const gender = normalizeGender(payload.gender);
     if (!gender) throw new BadRequestException("Gender is required");
     if (!bio) throw new BadRequestException("Short bio is required");
-    if (!payload.churchId) throw new BadRequestException("Church selection is required");
-    if (!inviteCode) throw new BadRequestException("Invitation code is required");
+    if (!payload.churchId && !payload.church?.trim()) throw new BadRequestException("Church selection is required");
     if (!this.invitations) throw new BadRequestException("Invitation validation is unavailable");
+    if (!inviteCode && this.invitations.inviteCodeRequired()) throw new BadRequestException("Invitation code is required");
 
     return this.users.manager.transaction(async (manager) => {
-      const invitation = await this.invitations!.consumeForUser(user, payload.churchId!, inviteCode, manager);
-      const church = invitation.church!;
+      // A listed church wins; otherwise `church` is the name of one that isn't in the directory yet.
+      const choice = payload.churchId ? { churchId: payload.churchId } : { churchName: payload.church };
+      // While invitation codes are paused a code is optional; one that is given is still checked and redeemed.
+      const church = inviteCode
+        ? (await this.invitations!.consumeForUser(user, choice, inviteCode, manager)).church!
+        : await this.invitations!.resolveChurchChoice(choice, manager, true);
       if (payload.name) user.name = payload.name.trim();
       if (payload.phone) user.phone = payload.phone;
       user.onboardingCompleted = true;

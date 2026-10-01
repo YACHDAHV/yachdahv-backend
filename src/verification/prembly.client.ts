@@ -121,26 +121,39 @@ export class PremblyClient {
     };
   }
 
-  private isSuccessful(payload: PremblyJson, kind: "liveness" | "nin" | "document") {
-    const responseCode = String(payload.response_code ?? "");
-    const statusFlag = payload.status === true || String(payload.status).toLowerCase() === "true";
+  /**
+   * Fails closed. Prembly's top-level `status: true` only means the request was processed — a NIN
+   * that doesn't exist or a face that doesn't match still comes back with it — so a pass needs a
+   * success response code, a VERIFIED verification (when reported), the identity record itself
+   * for NIN lookups, and an explicit face match at or above the configured confidence.
+   */
+  isSuccessful(payload: PremblyJson, kind: "liveness" | "nin" | "document") {
+    if (isFalse(payload.status)) return false;
+    const responseCode = payload.response_code == null ? null : String(payload.response_code);
     const verification = asRecord(payload.verification);
     const verificationStatus = String(verification.status ?? payload.verification_status ?? "").toUpperCase();
-    const requestOk = statusFlag || responseCode === "00" || verificationStatus === "VERIFIED";
-    if (!requestOk) return false;
+    if (responseCode !== null && responseCode !== "00") return false;
+    if (verificationStatus && verificationStatus !== "VERIFIED") return false;
+    if (responseCode === null && verificationStatus !== "VERIFIED") return false;
     if (kind === "liveness") {
       return (this.confidenceFrom(payload) ?? 0) >= this.minLivenessConfidence();
     }
+    if (kind === "nin" && !Object.keys(asRecord(payload.data)).length) return false; // no NIN record came back
     return this.faceMatched(payload);
   }
 
   private faceMatched(payload: PremblyJson) {
     const face = asRecord(payload.face_data);
-    if (!Object.keys(face).length) return true;
-    if (face.status === false || String(face.status).toLowerCase() === "false") return false;
-    const confidence = this.confidenceFrom(face) ?? this.confidenceFrom(payload);
-    if (confidence == null) return face.status === true || String(face.status).toLowerCase() === "true";
-    return confidence >= 0.5;
+    if (!Object.keys(face).length) return false; // no face comparison means nothing was matched
+    if (!isTrue(face.status)) return false;
+    if (face.response_code != null && String(face.response_code) !== "00") return false;
+    const confidence = this.confidenceFrom(face);
+    return confidence != null && confidence >= this.minFaceConfidence();
+  }
+
+  /** Sandbox hosts return sample "verified" identities for any input, so their results are never trusted. */
+  isSandbox() {
+    return /sandbox|test/i.test(this.baseUrl());
   }
 
   private confidenceFrom(payload: PremblyJson) {
@@ -187,6 +200,11 @@ export class PremblyClient {
     return (this.config.get<string>("PREMBLY_BASE_URL")?.trim() || "https://api.prembly.com").replace(/\/$/, "");
   }
 
+  private minFaceConfidence() {
+    const configured = Number(this.config.get<string>("PREMBLY_FACE_MIN_CONFIDENCE") ?? "0.7");
+    return Number.isFinite(configured) ? configured : 0.7;
+  }
+
   private minLivenessConfidence() {
     const configured = Number(this.config.get<string>("PREMBLY_LIVENESS_MIN_CONFIDENCE") ?? "0.7");
     return Number.isFinite(configured) ? configured : 0.7;
@@ -213,6 +231,14 @@ function stripSensitive(value: unknown): unknown {
     output[key] = stripSensitive(nested) as PremblyJson[string];
   }
   return output;
+}
+
+function isTrue(value: unknown) {
+  return value === true || String(value).toLowerCase() === "true";
+}
+
+function isFalse(value: unknown) {
+  return value === false || String(value).toLowerCase() === "false";
 }
 
 function asRecord(value: unknown): PremblyJson {

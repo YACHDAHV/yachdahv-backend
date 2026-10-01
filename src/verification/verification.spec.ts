@@ -58,6 +58,7 @@ describe("Prembly identity verification", () => {
     };
     const prembly = {
       isConfigured: () => true,
+      isSandbox: () => false,
       livelinessCheck: jest.fn().mockResolvedValue({ ok: true, reference: "live-1", message: "Liveliness Detected", payload: {} }),
       ninWithFace: jest.fn().mockResolvedValue({ ok: true, reference: "nin-1", message: "Face Match", payload: {} }),
     };
@@ -222,5 +223,44 @@ describe("Prembly client", () => {
       documentBase64: "doc",
       selfieBase64: "face",
     })).resolves.toMatchObject({ ok: false });
+  });
+
+  describe("wrong or unknown NIN", () => {
+    const client = (overrides: Record<string, string> = {}) => new PremblyClient({
+      get: jest.fn((key: string) => ({ PREMBLY_API_KEY: "key", ...overrides } as Record<string, string>)[key]),
+    } as unknown as ConfigService);
+    const matched = {
+      status: true,
+      response_code: "00",
+      data: { firstname: "Ada", lastname: "Obi" },
+      verification: { status: "VERIFIED", reference: "ref-1" },
+      face_data: { status: true, response_code: "00", message: "Face Match", confidence: 92.5 },
+    };
+
+    it("passes a found NIN whose face matches", () => {
+      expect(client().isSuccessful(matched, "nin")).toBe(true);
+    });
+
+    it("rejects a processed request whose NIN was not found", () => {
+      expect(client().isSuccessful({ status: true, response_code: "01", detail: "NIN not found", data: {} }, "nin")).toBe(false);
+    });
+
+    it("rejects a NOT-VERIFIED verification even when the request succeeded", () => {
+      expect(client().isSuccessful({ ...matched, verification: { status: "NOT-VERIFIED" } }, "nin")).toBe(false);
+    });
+
+    it("rejects when no identity record or no face comparison came back", () => {
+      expect(client().isSuccessful({ ...matched, data: {} }, "nin")).toBe(false);
+      expect(client().isSuccessful({ ...matched, face_data: undefined }, "nin")).toBe(false);
+    });
+
+    it("rejects a weak face match", () => {
+      expect(client().isSuccessful({ ...matched, face_data: { status: true, confidence: 41 } }, "nin")).toBe(false);
+    });
+
+    it("flags sandbox hosts so their sample results are never trusted", () => {
+      expect(client({ PREMBLY_BASE_URL: "https://sandbox.prembly.com" }).isSandbox()).toBe(true);
+      expect(client().isSandbox()).toBe(false);
+    });
   });
 });
