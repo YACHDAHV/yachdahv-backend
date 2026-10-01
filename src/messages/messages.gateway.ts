@@ -14,7 +14,7 @@ import {
 import { isUUID } from "class-validator";
 import { Server, Socket } from "socket.io";
 import { AuthenticatedUser } from "../auth/auth.types";
-import { Message } from "../database/entities";
+import { Message, Notification } from "../database/entities";
 import { MessagesService } from "./messages.service";
 
 type ChatSocket = Socket & { data: { user?: AuthenticatedUser; watchingPresence?: string } };
@@ -110,7 +110,7 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
   @SubscribeMessage("message:send")
   async sendMessage(
     @ConnectedSocket() client: ChatSocket,
-    @MessageBody() payload: { conversationId?: string; body?: string; meta?: { kind?: unknown; topicKey?: unknown } },
+    @MessageBody() payload: { conversationId?: string; body?: string; meta?: { kind?: unknown; topicKey?: unknown; replyToId?: unknown } },
     @Ack() acknowledge?: Acknowledge,
   ) {
     try {
@@ -151,6 +151,12 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
   async publishMessage(message: Message) {
     const [userAId, userBId] = await this.messages.participantIds(message.conversationId);
     this.server.to(this.userRoom(userAId)).to(this.userRoom(userBId)).emit("message:new", message);
+  }
+
+  publishNotification(notification: Notification) {
+    if (!this.server || !notification?.userId) return;
+    const { user: _user, ...payload } = notification;
+    this.server.to(this.userRoom(notification.userId)).emit("notification:new", payload);
   }
 
   private markOnline(userId: string, socketId: string) {

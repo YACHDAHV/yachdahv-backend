@@ -6,6 +6,7 @@ import { EmailModule } from "../email/email.module";
 import { MessagesController } from "./messages.controller";
 import { MessagesGateway } from "./messages.gateway";
 import { MessagesService } from "./messages.service";
+import { NotificationEventsSubscriber } from "./notification-events.subscriber";
 
-@Module({ imports: [AuthModule, EmailModule, TypeOrmModule.forFeature([Conversation, Message, Match, Block, Notification, User])], controllers: [MessagesController], providers: [MessagesService, MessagesGateway] })
+@Module({ imports: [AuthModule, EmailModule, TypeOrmModule.forFeature([Conversation, Message, Match, Block, Notification, User])], controllers: [MessagesController], providers: [MessagesService, MessagesGateway, NotificationEventsSubscriber] })
 export class MessagesModule {}

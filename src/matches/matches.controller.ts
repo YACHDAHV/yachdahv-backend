@@ -1,13 +1,14 @@
-import { Controller, DefaultValuePipe, Get, Param, ParseIntPipe, ParseUUIDPipe, Post, Query, UseGuards } from "@nestjs/common";
+import { Controller, DefaultValuePipe, Delete, Get, HttpCode, Param, ParseIntPipe, ParseUUIDPipe, Post, Put, Query, UseGuards } from "@nestjs/common";
 import { CurrentUser } from "../auth/auth.decorators";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { FavoritesService } from "./favorites.service";
 import { MatchesService } from "./matches.service";
 
 @UseGuards(JwtAuthGuard)
 @Controller("matches")
 export class MatchesController {
-  constructor(private readonly matches: MatchesService) {}
+  constructor(private readonly matches: MatchesService, private readonly favorites: FavoritesService) {}
 
   @Get("dashboard")
   dashboard(@CurrentUser() user: AuthenticatedUser) {
@@ -19,8 +20,23 @@ export class MatchesController {
     return this.matches.suggestions(user.sub, limit);
   }
 
+  // Each match carries `favorite`: whether this member has starred the other person.
   @Get()
-  list(@CurrentUser() user: AuthenticatedUser) { return this.matches.list(user.sub); }
+  async list(@CurrentUser() user: AuthenticatedUser) {
+    const [matches, favorites] = await Promise.all([this.matches.list(user.sub), this.favorites.memberIds(user.sub)]);
+    return matches.map((match) => ({ ...match, favorite: favorites.has(match.userAId === user.sub ? match.userBId : match.userAId) }));
+  }
+
+  @Put(":memberId/favorite")
+  favorite(@CurrentUser() user: AuthenticatedUser, @Param("memberId", ParseUUIDPipe) memberId: string) {
+    return this.favorites.set(user.sub, memberId, true);
+  }
+
+  @Delete(":memberId/favorite")
+  @HttpCode(200)
+  unfavorite(@CurrentUser() user: AuthenticatedUser, @Param("memberId", ParseUUIDPipe) memberId: string) {
+    return this.favorites.set(user.sub, memberId, false);
+  }
 
   @Post(":targetId/like")
   like(@CurrentUser() user: AuthenticatedUser, @Param("targetId", ParseUUIDPipe) targetId: string) {

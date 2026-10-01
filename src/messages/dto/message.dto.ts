@@ -1,11 +1,12 @@
 import { Type } from "class-transformer";
-import { IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength, ValidateNested } from "class-validator";
+import { IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength, ValidateIf, ValidateNested } from "class-validator";
 
-export const MESSAGE_META_KINDS = ["guided-question", "guided-answer"] as const;
+export const MESSAGE_META_KINDS = ["guided-question", "guided-answer", "reply"] as const;
 
 export class MessageMetaDto {
   @IsIn(MESSAGE_META_KINDS) kind!: string;
-  @IsString() @MinLength(1) @MaxLength(100) topicKey!: string;
+  @ValidateIf((meta: MessageMetaDto) => meta.kind !== "reply") @IsString() @MinLength(1) @MaxLength(100) topicKey?: string;
+  @ValidateIf((meta: MessageMetaDto) => meta.kind === "reply") @IsUUID() replyToId?: string;
 }
 
 export class CreateConversationDto {

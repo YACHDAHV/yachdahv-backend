@@ -476,9 +476,10 @@ export class Message {
   @Column({ type: "text" })
   body!: string;
 
-  // Guided conversation tag: { kind: "guided-question" | "guided-answer", topicKey }.
+  // Guided conversation tag { kind: "guided-question" | "guided-answer", topicKey },
+  // or a reply to an earlier message in the same conversation { kind: "reply", replyToId }.
   @Column({ type: "jsonb", nullable: true })
-  meta!: { kind: string; topicKey: string } | null;
+  meta!: { kind: string; topicKey?: string; replyToId?: string } | null;
 
   @Column({ name: "read_at", type: "timestamptz", nullable: true })
   readAt!: Date | null;
@@ -514,6 +515,31 @@ export class Notification {
 
   @Column({ name: "read_at", type: "timestamptz", nullable: true })
   readAt!: Date | null;
+
+  @CreateDateColumn({ name: "created_at" })
+  createdAt!: Date;
+}
+
+// A member's starred mutual matches ("Favorite matches"), private to that member.
+@Entity("favorite_matches")
+@Index("IDX_favorite_matches_user_member", ["userId", "memberId"], { unique: true })
+export class FavoriteMatch {
+  @PrimaryGeneratedColumn("uuid")
+  id!: string;
+
+  @Column({ name: "user_id", type: "uuid" })
+  userId!: string;
+
+  @ManyToOne(() => User, { onDelete: "CASCADE" })
+  @JoinColumn({ name: "user_id" })
+  user!: Relation<User>;
+
+  @Column({ name: "member_id", type: "uuid" })
+  memberId!: string;
+
+  @ManyToOne(() => User, { onDelete: "CASCADE" })
+  @JoinColumn({ name: "member_id" })
+  member!: Relation<User>;
 
   @CreateDateColumn({ name: "created_at" })
   createdAt!: Date;
@@ -754,6 +780,7 @@ export const databaseEntities = [
   Conversation,
   Message,
   Notification,
+  FavoriteMatch,
   Block,
   Report,
   VerificationSubmission,

@@ -1,5 +1,6 @@
 import { ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
+import { isUUID } from "class-validator";
 import { Brackets, Repository } from "typeorm";
 import { Block, Conversation, Match, MatchStatus, Message, Notification, User } from "../database/entities";
 import { EmailService } from "../email/email.service";
@@ -44,13 +45,13 @@ export class MessagesService {
     return this.messages.find({ where: { conversationId }, order: { createdAt: "ASC" }, relations: { sender: true } });
   }
 
-  async send(userId: string, conversationId: string, body: string, meta?: { kind?: unknown; topicKey?: unknown } | null) {
+  async send(userId: string, conversationId: string, body: string, meta?: MessageMetaInput | null) {
     const conversation = await this.assertMember(userId, conversationId);
     const recipientId = conversation.userAId === userId ? conversation.userBId : conversation.userAId;
     if (await this.blocks.exists({ where: [{ blockerId: userId, blockedId: recipientId }, { blockerId: recipientId, blockedId: userId }] })) {
       throw new ForbiddenException("Messaging is unavailable");
     }
-    const message = await this.messages.save(this.messages.create({ conversationId, senderId: userId, body: body.trim(), readAt: null, meta: cleanMeta(meta) }));
+    const message = await this.messages.save(this.messages.create({ conversationId, senderId: userId, body: body.trim(), readAt: null, meta: await this.cleanMeta(conversationId, meta) }));
     await this.conversations.update(conversationId, { updatedAt: new Date() });
     void this.notifyNewMessage(userId, recipientId, conversationId, message.id, body.trim());
     return message;
@@ -95,6 +96,17 @@ export class MessagesService {
     } catch (error) {
       this.logger.error(`Message notification failed for conversation ${conversationId}`, error instanceof Error ? error.stack : undefined);
     }
+  }
+
+  /** Keeps only a valid guided-conversation tag or a reply to a message in this conversation (socket payloads are not DTO-validated). */
+  private async cleanMeta(conversationId: string, meta?: MessageMetaInput | null) {
+    if (meta?.kind === "reply") {
+      const replyToId = typeof meta.replyToId === "string" && isUUID(meta.replyToId) ? meta.replyToId : "";
+      return replyToId && (await this.messages.exists({ where: { id: replyToId, conversationId } })) ? { kind: "reply", replyToId } : null;
+    }
+    if (!meta || !["guided-question", "guided-answer"].includes(String(meta.kind))) return null;
+    const topicKey = typeof meta.topicKey === "string" ? meta.topicKey.trim().slice(0, 100) : "";
+    return topicKey ? { kind: String(meta.kind), topicKey } : null;
   }
 
   async markRead(userId: string, conversationId: string) {
@@ -144,9 +156,4 @@ export class MessagesService {
   }
 }
 
-/** Keeps only a valid guided-conversation tag (socket payloads are not DTO-validated). */
-function cleanMeta(meta?: { kind?: unknown; topicKey?: unknown } | null) {
-  if (!meta || !["guided-question", "guided-answer"].includes(String(meta.kind))) return null;
-  const topicKey = typeof meta.topicKey === "string" ? meta.topicKey.trim().slice(0, 100) : "";
-  return topicKey ? { kind: String(meta.kind), topicKey } : null;
-}
+type MessageMetaInput = { kind?: unknown; topicKey?: unknown; replyToId?: unknown };
